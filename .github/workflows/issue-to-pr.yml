@@ -24,7 +24,7 @@ on:
       claude_args:
         description: "Additional CLI args passed to claude-code-action"
         type: string
-        default: ""
+        default: "--dangerously-skip-permissions"
       mcp_config:
         description: "JSON MCP server config (e.g., for Linear integration)"
         type: string
