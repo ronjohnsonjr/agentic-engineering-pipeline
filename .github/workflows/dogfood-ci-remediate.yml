@@ -10,6 +10,10 @@ on:
   check_suite:
     types: [completed]
 
+concurrency:
+  group: agentic-ci-remediate-${{ github.event.check_suite.id }}
+  cancel-in-progress: false
+
 jobs:
   # Extract PR info from the check_suite event.
   # check_suite.pull_requests is populated for same-repo PRs.

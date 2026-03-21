@@ -11,6 +11,10 @@ on:
     branches: [main]
     types: [opened]
 
+concurrency:
+  group: agentic-pr-describe-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pr-describe:
     uses: ./.github/workflows/pr-describe.yml

@@ -153,3 +153,9 @@ jobs:
 
             If the repo contains `.claude/agents/quality-sweep.md`, read it and follow
             its project-specific instructions instead of the generic steps above.
+
+            ## Rules
+            - Never remove code that changes behavior, only comments and dead branches.
+            - Do not rename identifiers without explicit instructions.
+            - If a fix would affect more than 10 files, split it into separate commits.
+            - Always verify the test suite passes after any automated change.
