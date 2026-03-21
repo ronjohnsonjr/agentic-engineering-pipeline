@@ -2,7 +2,7 @@
 # Calls the reusable pr-describe workflow to auto-generate PR descriptions
 # when a PR targeting main is opened with a minimal or empty body.
 #
-# Required repo secret: ANTHROPIC_API_KEY
+# Required repo secret: CLAUDE_CODE_OAUTH_TOKEN
 #
 name: "Local: PR Describe"
 

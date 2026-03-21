@@ -2,7 +2,7 @@
 # Calls the reusable pr-review workflow for AI-powered code review on
 # every PR opened or updated against main in this repo.
 #
-# Required repo secret: ANTHROPIC_API_KEY
+# Required repo secret: CLAUDE_CODE_OAUTH_TOKEN
 #
 name: "Local: PR Review"
 

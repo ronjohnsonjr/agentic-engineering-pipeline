@@ -2,7 +2,7 @@
 # Runs weekly (or on demand) to clean dead code, unused imports, and naming issues.
 #
 # Prerequisites:
-#   - Set ANTHROPIC_API_KEY as a repo or org secret
+#   - Set CLAUDE_CODE_OAUTH_TOKEN as a repo or org secret
 #   - (Optional) Add .claude/agents/quality-sweep.md for project-specific behavior
 #
 name: "Agentic: Quality Sweep"
@@ -26,7 +26,7 @@ jobs:
   sweep:
     uses: onyx-point/agentic-ci/.github/workflows/quality-sweep.yml@main
     secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     with:
       scope: ${{ inputs.scope || '' }}
       auto_commit: true

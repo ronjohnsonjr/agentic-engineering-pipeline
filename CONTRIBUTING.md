@@ -18,7 +18,7 @@ reusable workflows in `.github/workflows/` on this repo itself:
 | `dogfood-pr-describe.yml` | PR opened against `main` | `pr-describe.yml` |
 | `dogfood-quality-sweep.yml` | Weekly (Mon 09:00 UTC) or manual | `quality-sweep.yml` |
 
-Each caller uses `secrets: inherit` so the single `ANTHROPIC_API_KEY`
+Each caller uses `secrets: inherit` so the single `CLAUDE_CODE_OAUTH_TOKEN`
 repo secret flows through without duplication.
 
 ## What this means for contributors
@@ -68,13 +68,13 @@ PR for review. You can also trigger it manually from the Actions tab.
 All dogfood workflows require one repo secret:
 
 ```
-ANTHROPIC_API_KEY
+CLAUDE_CODE_OAUTH_TOKEN
 ```
 
 Set it with:
 
 ```bash
-gh secret set ANTHROPIC_API_KEY
+gh secret set CLAUDE_CODE_OAUTH_TOKEN
 ```
 
 No other secrets or tokens are needed — `GITHUB_TOKEN` permissions are

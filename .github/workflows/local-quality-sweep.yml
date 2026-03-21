@@ -2,7 +2,7 @@
 # Calls the reusable quality-sweep workflow on a weekly schedule and on
 # manual dispatch. Keeps this repo's own code clean.
 #
-# Required repo secret: ANTHROPIC_API_KEY
+# Required repo secret: CLAUDE_CODE_OAUTH_TOKEN
 #
 name: "Local: Quality Sweep"
 

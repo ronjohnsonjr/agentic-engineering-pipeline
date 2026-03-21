@@ -34,9 +34,9 @@ def test_model_input_has_default(workflow):
     assert inputs["model"].get("default") is not None, "'model' input has no default"
 
 
-def test_anthropic_api_key_secret_required(workflow):
+def test_claude_code_oauth_token_secret_required(workflow):
     secrets = get_on(workflow)["workflow_call"].get("secrets", {})
-    assert "ANTHROPIC_API_KEY" in secrets, "ANTHROPIC_API_KEY secret not declared"
+    assert "CLAUDE_CODE_OAUTH_TOKEN" in secrets, "CLAUDE_CODE_OAUTH_TOKEN secret not declared"
 
 
 def test_prompt_has_agent_override_section(workflow):
