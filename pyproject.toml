@@ -11,8 +11,8 @@ dependencies = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
     "pydantic>=2.0",
+    "pyyaml>=6",
 ]
-dependencies = []
 
 [project.optional-dependencies]
 dev = [
@@ -24,8 +24,4 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-    "pyyaml>=6",
-]
-
-[tool.pytest.ini_options]
 testpaths = ["tests"]
