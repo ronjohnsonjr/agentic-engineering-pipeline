@@ -10,6 +10,10 @@ on:
   issues:
     types: [labeled]
 
+concurrency:
+  group: agentic-issue-to-pr-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   issue-to-pr:
     if: github.event.label.name == 'dogfood'
