@@ -1,4 +1,4 @@
-# agentic-ci
+# Agentic Workflows
 
 Repo-agnostic GitHub Actions workflows that wire Claude-powered agentic loops
 into your CI/CD pipeline. Drop these into any repository to get autonomous PR
