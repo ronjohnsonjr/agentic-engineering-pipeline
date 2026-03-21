@@ -1,0 +1,107 @@
+# Reusable workflow: Dependabot PR Review
+# When Dependabot opens a PR, Claude reviews the changelog and breaking
+# changes, then posts a risk assessment comment.
+#
+# Usage in consuming repo:
+#   uses: <org>/agentic-ci/.github/workflows/dependabot-review.yml@main
+#
+name: "Agentic: Dependabot Review"
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: "Claude model to use"
+        type: string
+        default: "sonnet"
+      auto_approve_patch:
+        description: "Auto-approve patch version bumps if tests pass"
+        type: boolean
+        default: false
+      claude_args:
+        description: "Additional CLI args passed to claude-code-action"
+        type: string
+        default: ""
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  dependabot-review:
+    name: Agentic Dependabot Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Dependabot Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: ${{ inputs.claude_args }}
+          prompt: |
+            Dependabot has opened PR #${{ github.event.pull_request.number }}
+            to update a dependency. Review the update and post a risk assessment.
+
+            ## Steps
+
+            1. Read the PR diff to identify:
+               - Which package(s) are being updated
+               - The version change (e.g., 1.2.3 -> 1.3.0)
+               - Whether this is a patch, minor, or major bump
+
+            2. For each updated package, research the changes:
+               ```bash
+               # Get the PR body (Dependabot includes release notes)
+               gh pr view ${{ github.event.pull_request.number }} --json body -q .body
+               ```
+
+            3. Analyze the risk:
+               - **Breaking changes**: Does the changelog mention any?
+               - **Deprecations**: Any APIs we use that are now deprecated?
+               - **Security fixes**: Is this a security patch? (check for CVE references)
+               - **Usage in our codebase**: Search for imports/usage of the updated package
+                 ```bash
+                 grep -r "import.*<package>" --include="*.py" --include="*.ts" --include="*.js" .
+                 ```
+
+            4. Post a PR comment with the risk assessment:
+
+               ## Dependency Update Review
+
+               | Package | From | To | Bump Type |
+               |---------|------|----|-----------|
+               | package-name | x.y.z | a.b.c | patch/minor/major |
+
+               ### Risk Assessment
+
+               **Overall Risk**: LOW / MEDIUM / HIGH
+
+               **Breaking Changes**: None found / [list them]
+               **Deprecations**: None / [list affected code paths]
+               **Security**: No CVEs / [list CVEs with severity]
+               **Usage in Codebase**: N files import this package
+
+               ### Recommendation
+
+               [Approve / Review carefully / Block until ...]
+
+               ---
+               *Dependency review by Claude via agentic-ci.*
+
+            5. If auto_approve_patch is true AND this is a patch bump AND
+               risk is LOW: approve the PR with `gh pr review --approve`.
+
+            ## Rules
+            - Be conservative. When in doubt, flag for human review.
+            - Major version bumps are always MEDIUM risk minimum.
+            - Security patches are always worth calling out explicitly.
+            - Check if the repo has a SECURITY.md or dependency policy to follow.

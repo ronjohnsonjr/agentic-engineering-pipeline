@@ -1,0 +1,129 @@
+# Reusable workflow: PR Review Orchestrator
+# Triggers the full Copilot + Claude collaborative review cycle on a PR.
+#
+# Usage in consuming repo:
+#   uses: <org>/agentic-ci/.github/workflows/pr-review.yml@main
+#
+name: "Agentic: PR Review"
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: "Claude model to use"
+        type: string
+        default: "sonnet"
+      max_copilot_wait_minutes:
+        description: "Max minutes to wait for Copilot review"
+        type: number
+        default: 10
+      max_review_rounds:
+        description: "Max rounds of Copilot feedback to process"
+        type: number
+        default: 2
+      claude_args:
+        description: "Additional CLI args passed to claude-code-action"
+        type: string
+        default: ""
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+jobs:
+  pr-review:
+    name: Agentic PR Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude PR Review Orchestrator
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          additional_permissions: |
+            actions: read
+          claude_args: ${{ inputs.claude_args }}
+          prompt: |
+            You are running an automated PR review workflow on PR #${{ github.event.pull_request.number }}.
+
+            ## Your task
+
+            Orchestrate a full collaborative code review cycle:
+
+            1. CATALOG ALL EXISTING REVIEW COMMENTS on this PR:
+               - Use `gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments` to get inline comments
+               - Use `gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews` to get review summaries
+               - Check for comments from: copilot, github-copilot[bot], copilot-pull-request-reviewer[bot], github-code-quality
+
+            2. If Copilot has not yet reviewed, wait up to ${{ inputs.max_copilot_wait_minutes }} minutes
+               (poll every 20s) for a Copilot review to appear.
+
+            3. For EACH review comment, evaluate and take one of these actions:
+
+               FIX: If the comment identifies a legitimate issue:
+               - Make the code change
+               - Reply to the comment thread: "Resolved: [description]. Changed [file:line] to [description]."
+
+               ACKNOWLEDGE: If valid but no code change needed:
+               - Reply: "Acknowledged: [explanation]. No change made."
+
+               DECLINE: If incorrect or would degrade quality:
+               - Reply: "Declined: [reasoning]."
+
+            4. After fixing, run whatever quality checks the repo defines:
+               - If a Makefile exists with a `check` target: `make check`
+               - Else if pyproject.toml exists: `ruff check . && pytest`
+               - Else if package.json exists: `npm test`
+               - Otherwise: skip and note "no quality gate found"
+
+            5. Batch related fixes into logical commits with conventional commit messages.
+
+            6. Push fixes to the PR branch.
+
+            7. Allow up to ${{ inputs.max_review_rounds }} rounds of Copilot feedback.
+               If Copilot returns the same findings after a fix round, stop early (convergence).
+
+            8. Post a top-level PR comment with this format:
+
+               ## Code Review Summary
+
+               **Total Comments Reviewed**: N
+               **Resolved (fixed)**: N | **Acknowledged (no change)**: N | **Declined**: N
+
+               ### Changes Made
+               - [list each fix]
+
+               ### Items Acknowledged
+               - [list with rationale]
+
+               ### Items Declined
+               - [list with rationale]
+
+               ### Commits
+               - [SHAs and messages]
+
+               ---
+               *Review orchestrated by Claude via agentic-ci.*
+
+            ## Agent override
+
+            If the repo contains `.claude/agents/pr-review-orchestrator.md`, read it
+            and follow its project-specific instructions. Those instructions take
+            precedence over the generic steps above for any conflicts.
+
+            ## Rules
+            - Always reply ON the comment thread, not as a separate top-level comment.
+            - If a fix introduces test failures, revert and decline with explanation.
+            - Respect any project conventions from CLAUDE.md if present.
+            - Use conventional commits for all fix commits.

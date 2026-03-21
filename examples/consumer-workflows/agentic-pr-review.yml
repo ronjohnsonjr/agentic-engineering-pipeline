@@ -1,0 +1,33 @@
+# Drop this into your repo's .github/workflows/ to enable agentic PR review.
+# Triggers the Copilot + Claude collaborative review cycle on every PR.
+#
+# Prerequisites:
+#   - Set ANTHROPIC_API_KEY as a repo or org secret
+#   - (Optional) Add .claude/agents/pr-review-orchestrator.md for project-specific behavior
+#
+name: "Agentic: PR Review"
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+
+# Skip draft PRs
+concurrency:
+  group: agentic-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Don't run on drafts or bot PRs (except Dependabot, which has its own workflow)
+    if: >
+      !github.event.pull_request.draft &&
+      github.actor != 'dependabot[bot]'
+    uses: onyx-point/agentic-ci/.github/workflows/pr-review.yml@main
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    # Uncomment to customize:
+    # with:
+    #   max_copilot_wait_minutes: 15
+    #   max_review_rounds: 3

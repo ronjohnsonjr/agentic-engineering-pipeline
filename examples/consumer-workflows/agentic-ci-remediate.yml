@@ -1,0 +1,60 @@
+# Drop this into your repo's .github/workflows/ to enable agentic CI remediation.
+# When CI fails on a PR, Claude auto-diagnoses and pushes a fix.
+#
+# Prerequisites:
+#   - Set ANTHROPIC_API_KEY as a repo or org secret
+#   - (Optional) Add .claude/agents/ci-remediate.md for project-specific behavior
+#
+name: "Agentic: CI Remediate"
+
+on:
+  # Trigger when a check suite completes with failure
+  check_suite:
+    types: [completed]
+
+concurrency:
+  group: agentic-ci-remediate-${{ github.event.check_suite.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  # First, find the PR associated with the failing check suite
+  find-pr:
+    if: >
+      github.event.check_suite.conclusion == 'failure' &&
+      github.event.check_suite.head_branch != 'main'
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.find.outputs.pr_number }}
+      pr_branch: ${{ steps.find.outputs.pr_branch }}
+      has_pr: ${{ steps.find.outputs.has_pr }}
+    steps:
+      - name: Find associated PR
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_DATA=$(gh api repos/${{ github.repository }}/commits/${{ github.event.check_suite.head_sha }}/pulls \
+            --jq '.[0] | {number, head_branch: .head.ref}' 2>/dev/null || echo "{}")
+          PR_NUMBER=$(echo "$PR_DATA" | jq -r '.number // empty')
+          PR_BRANCH=$(echo "$PR_DATA" | jq -r '.head_branch // empty')
+          if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
+            echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "pr_branch=$PR_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "has_pr=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pr=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  remediate:
+    needs: find-pr
+    if: needs.find-pr.outputs.has_pr == 'true'
+    uses: onyx-point/agentic-ci/.github/workflows/ci-remediate.yml@main
+    with:
+      pr_number: ${{ needs.find-pr.outputs.pr_number }}
+      pr_branch: ${{ needs.find-pr.outputs.pr_branch }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    # Uncomment to customize:
+    # with:
+    #   max_fix_rounds: 3
+    #   ci_workflow_name: "Test and Coverage"

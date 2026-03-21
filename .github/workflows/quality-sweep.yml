@@ -1,0 +1,155 @@
+# Reusable workflow: Quality Sweep
+# Periodic codebase hygiene: dead code, naming, slop, unused imports.
+#
+# Usage in consuming repo:
+#   uses: <org>/agentic-ci/.github/workflows/quality-sweep.yml@main
+#
+name: "Agentic: Quality Sweep"
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: "Claude model to use"
+        type: string
+        default: "sonnet"
+      scope:
+        description: "Directory or glob to sweep (empty = full repo)"
+        type: string
+        default: ""
+      auto_commit:
+        description: "Automatically commit and create PR for fixes"
+        type: boolean
+        default: true
+      claude_args:
+        description: "Additional CLI args passed to claude-code-action"
+        type: string
+        default: ""
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  quality-sweep:
+    name: Agentic Quality Sweep
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Quality Sweep
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: ${{ inputs.claude_args }}
+          prompt: |
+            You are a codebase quality sweep agent. Your job is to find and fix
+            code hygiene issues without changing behavior.
+
+            Scope: "${{ inputs.scope }}" (if empty, sweep the full repo)
+            Auto-commit: ${{ inputs.auto_commit }}
+
+            ## Phase 1: Detect language and tooling
+
+            Determine the project's primary language and available tools:
+            - Python: look for pyproject.toml, setup.py, requirements.txt
+            - JavaScript/TypeScript: look for package.json, tsconfig.json
+            - Go: look for go.mod
+            - Rust: look for Cargo.toml
+            - Other: adapt accordingly
+
+            Read CLAUDE.md if present for project-specific conventions.
+
+            ## Phase 2: Automated scanning
+
+            Run language-appropriate static analysis:
+
+            **Python:**
+            - `ruff check . --select F401,F841,E501,W291,W293 --statistics` (unused imports, variables, line length, whitespace)
+            - `mypy --install-types --non-interactive` if mypy is configured
+
+            **JavaScript/TypeScript:**
+            - `npx eslint . --report-unused-disable-directives` if eslint is configured
+            - Look for unused exports
+
+            **Any language:**
+            - Search for TODO/FIXME/HACK comments without tracking references
+            - Search for commented-out code blocks (3+ consecutive commented lines)
+            - Search for duplicate string literals (same string used 3+ times)
+
+            ## Phase 3: Naming audit
+
+            Scan identifiers for generic names that could be more descriptive:
+            - Flag: manager, handler, helper, utils, utility, service, worker, runner,
+              executor, dispatcher, coordinator, controller
+            - Flag variables: data, result, results, output, item, items, obj, value,
+              info, entry, record, payload, response, content, temp
+            - Note: some of these may be legitimate. Flag but don't auto-rename.
+
+            ## Phase 4: Shrink pass (behavior-preserving only)
+
+            - Remove redundant comments that restate the code
+            - Remove unused imports (auto-fixable)
+            - Remove dead branches (else after return/raise/continue/break)
+            - Collapse single-use variables where the name adds no clarity
+
+            Do NOT remove:
+            - Comments explaining "why" (not "what")
+            - Docstrings on public APIs
+            - Variables with clarifying names
+
+            ## Phase 5: Verify
+
+            Run the repo's test suite to confirm nothing broke:
+            - Makefile `check` target, or
+            - Language-appropriate test command
+
+            If any check fails, revert the specific change that broke it.
+
+            ## Phase 6: Report and commit
+
+            If auto_commit is true and fixes were made:
+            1. Create a branch: `chore/quality-sweep-$(date +%Y%m%d)`
+            2. Commit: `chore: quality sweep (dead code, imports, hygiene)`
+            3. Push and create PR with the sweep report as the body
+
+            If auto_commit is false, just output the report.
+
+            Report format:
+
+            ## Quality Sweep Report
+
+            **Scope**: [what was scanned]
+            **Files scanned**: N
+
+            ### Static Analysis
+            - Unused imports removed: N
+            - Unused variables: N
+            - Other findings: N
+
+            ### Naming Audit
+            - Generic names flagged: N (list with file:line, current name, suggestion)
+
+            ### Shrink Results
+            - Comments removed: N
+            - Dead branches removed: N
+            - Lines saved: N
+
+            ### Verification
+            - Status: PASS | FAIL (with details)
+
+            ---
+            *Quality sweep by Claude via agentic-ci.*
+
+            ## Agent override
+
+            If the repo contains `.claude/agents/quality-sweep.md`, read it and follow
+            its project-specific instructions instead of the generic steps above.

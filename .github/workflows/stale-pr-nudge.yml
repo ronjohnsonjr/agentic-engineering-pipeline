@@ -1,0 +1,128 @@
+# Reusable workflow: Stale PR Nudge
+# On a schedule, scans for stale PRs and posts a comment summarizing
+# what's blocking and nudging the author.
+#
+# Usage in consuming repo:
+#   uses: <org>/agentic-ci/.github/workflows/stale-pr-nudge.yml@main
+#
+name: "Agentic: Stale PR Nudge"
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: "Claude model to use"
+        type: string
+        default: "haiku"
+      stale_days:
+        description: "Number of days without activity before a PR is considered stale"
+        type: number
+        default: 5
+      max_prs:
+        description: "Maximum number of stale PRs to process per run"
+        type: number
+        default: 10
+      claude_args:
+        description: "Additional CLI args passed to claude-code-action"
+        type: string
+        default: ""
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+  actions: read
+  checks: read
+
+jobs:
+  stale-pr-nudge:
+    name: Agentic Stale PR Nudge
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Claude Stale PR Nudge
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          additional_permissions: |
+            actions: read
+            checks: read
+          claude_args: ${{ inputs.claude_args }}
+          prompt: |
+            You are a stale PR nudge bot. Find PRs that have been inactive for
+            ${{ inputs.stale_days }}+ days and post a helpful status comment.
+
+            ## Steps
+
+            1. Find stale PRs:
+               ```bash
+               gh pr list --state open --json number,title,author,updatedAt,reviewDecision,labels \
+                 --limit 50 | jq '[.[] | select(
+                   (now - (.updatedAt | fromdateiso8601)) > (${{ inputs.stale_days }} * 86400)
+                 )] | .[:${{ inputs.max_prs }}]'
+               ```
+
+            2. For EACH stale PR, diagnose what's blocking it:
+
+               a. Check CI status:
+                  ```bash
+                  gh pr checks <number> --json name,state
+                  ```
+
+               b. Check review status:
+                  ```bash
+                  gh pr view <number> --json reviewDecision,reviews
+                  ```
+
+               c. Check for unresolved conversations:
+                  ```bash
+                  gh api repos/${{ github.repository }}/pulls/<number>/comments \
+                    --jq '[.[] | select(.in_reply_to_id == null)] | length'
+                  ```
+
+               d. Check for merge conflicts:
+                  ```bash
+                  gh pr view <number> --json mergeable -q .mergeable
+                  ```
+
+            3. For each stale PR, determine the blocker category:
+               - CI_FAILING: one or more checks are failing
+               - REVIEW_NEEDED: no reviews or changes requested
+               - CONFLICTS: merge conflicts exist
+               - UNRESOLVED_COMMENTS: review threads still open
+               - UNKNOWN: no obvious blocker (maybe just forgotten)
+
+            4. Post a comment on EACH stale PR (skip if an agentic-ci nudge
+               comment was already posted in the last ${{ inputs.stale_days }} days):
+
+               ## Stale PR Check-in
+
+               This PR has been inactive for N days. Here's a quick status:
+
+               **Blocker**: [category]
+               **Details**: [specific info, e.g., "CI job 'Test and Coverage' is failing",
+               "Waiting on review from @username", "Merge conflicts in 3 files"]
+
+               **Suggested next step**: [actionable advice]
+
+               ---
+               *Nudge by Claude via agentic-ci. To disable, add the `no-nudge` label.*
+
+            5. Skip any PR with the label `no-nudge` or `wip` or `draft`.
+
+            6. After processing all PRs, output a summary:
+               - Total stale PRs found: N
+               - Nudged: N
+               - Skipped (already nudged / labeled): N
+
+            ## Rules
+            - Be helpful and friendly, not nagging.
+            - Never close or modify PRs, only comment.
+            - If a PR has been stale for 30+ days, suggest closing it.
+            - Respect the no-nudge label absolutely.

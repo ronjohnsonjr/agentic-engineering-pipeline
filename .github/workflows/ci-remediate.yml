@@ -1,0 +1,154 @@
+# Reusable workflow: CI Remediation
+# Auto-diagnoses and fixes failing CI checks on a PR.
+#
+# Usage in consuming repo:
+#   uses: <org>/agentic-ci/.github/workflows/ci-remediate.yml@main
+#
+name: "Agentic: CI Remediate"
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: "PR number to remediate (required)"
+        type: string
+        required: true
+      pr_branch:
+        description: "PR head branch name (required)"
+        type: string
+        required: true
+      model:
+        description: "Claude model to use"
+        type: string
+        default: "sonnet"
+      max_fix_rounds:
+        description: "Maximum fix-verify cycles before escalating"
+        type: number
+        default: 3
+      ci_workflow_name:
+        description: "Name of the CI workflow/job to monitor (as shown in PR checks)"
+        type: string
+        default: ""
+      claude_args:
+        description: "Additional CLI args passed to claude-code-action"
+        type: string
+        default: ""
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+  checks: read
+
+jobs:
+  ci-remediate:
+    name: Agentic CI Remediation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.pr_branch }}
+
+      - name: Run Claude CI Remediation
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          additional_permissions: |
+            actions: read
+            checks: read
+          claude_args: ${{ inputs.claude_args }}
+          prompt: |
+            You are the CI remediation agent. A CI check has failed on
+            PR #${{ inputs.pr_number }} (branch: ${{ inputs.pr_branch }}).
+
+            ## Your task
+
+            Diagnose the failing CI check, fix the root cause, and verify the fix.
+
+            ### Step 1: Identify the failure
+
+            ```bash
+            gh pr checks ${{ inputs.pr_number }} --json name,state,link
+            ```
+
+            CI workflow to focus on: "${{ inputs.ci_workflow_name }}"
+            (If empty, look for the first failing check.)
+
+            ### Step 2: Fetch failure logs
+
+            Find the failing run ID and read its logs:
+            ```bash
+            gh run list --branch ${{ inputs.pr_branch }} \
+              --json databaseId,status,conclusion,name \
+              -q '[.[] | select(.conclusion=="failure")] | .[0]'
+            ```
+
+            Then: `gh run view <RUN_ID> --log-failed | head -200`
+
+            ### Step 3: Diagnose
+
+            Determine:
+            1. Which test(s) or check(s) failed? (file path, test name, linter rule)
+            2. What is the error? (exception, message, line)
+            3. Is this pre-existing on the default branch?
+               Check: `git stash && git checkout $(gh repo view --json defaultBranchRef -q .defaultBranchRef.name) && <run failing test> ; git checkout -`
+               If pre-existing: report it but do NOT fix it.
+            4. What is the root cause?
+
+            ### Step 4: Fix
+
+            Apply the minimal fix. Do not refactor beyond what is needed.
+
+            After fixing, verify locally:
+            - If Makefile with `check` target exists: `make check`
+            - Else if pyproject.toml: `ruff check . && pytest`
+            - Else if package.json: `npm test`
+
+            ### Step 5: Push and re-check
+
+            ```bash
+            git add <changed files>
+            git commit -m "fix(ci): <description of root cause and fix>"
+            git push origin ${{ inputs.pr_branch }}
+            ```
+
+            Wait up to 5 minutes for the new CI run, then check status.
+
+            ### Step 6: Convergence
+
+            Repeat Steps 2-5 up to ${{ inputs.max_fix_rounds }} rounds.
+            If the same failure appears twice after a fix attempt, stop and escalate.
+
+            ### Step 7: Report
+
+            Post a PR comment:
+
+            ## CI Remediation Report
+
+            **Rounds**: N
+            **Failures found**: [list]
+            **Pre-existing (skipped)**: [list]
+            **Fixed**: [list with root cause]
+            **Final CI status**: PASS | STILL FAILING | ESCALATED
+
+            ---
+            *CI remediation by Claude via agentic-ci.*
+
+            ## Agent override
+
+            If the repo contains `.claude/agents/ci-remediate.md`, read it
+            and follow its project-specific instructions (they take precedence).
+
+            ## Rules
+            - Never change test logic to suppress a real failure.
+            - Never use --no-verify or skip pre-commit hooks.
+            - If a fix would touch more than 50 lines or 3 files, explain scope first.
+            - Never fix environment-specific failures that aren't this PR's fault.

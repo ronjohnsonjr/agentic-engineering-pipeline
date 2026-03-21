@@ -1,0 +1,26 @@
+# Drop this into your repo's .github/workflows/ to auto-review Dependabot PRs.
+# Claude reads the changelog, checks for breaking changes, and posts a risk assessment.
+#
+# Prerequisites:
+#   - Set ANTHROPIC_API_KEY as a repo or org secret
+#
+name: "Agentic: Dependabot Review"
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+concurrency:
+  group: agentic-dependabot-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Only run for Dependabot PRs
+    if: github.actor == 'dependabot[bot]'
+    uses: onyx-point/agentic-ci/.github/workflows/dependabot-review.yml@main
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    # Uncomment to customize:
+    # with:
+    #   auto_approve_patch: true

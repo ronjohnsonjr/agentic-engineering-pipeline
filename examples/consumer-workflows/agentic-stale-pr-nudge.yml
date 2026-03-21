@@ -1,0 +1,28 @@
+# Drop this into your repo's .github/workflows/ to nudge stale PRs.
+# Runs daily and posts a comment on PRs inactive for 5+ days.
+#
+# Prerequisites:
+#   - Set ANTHROPIC_API_KEY as a repo or org secret
+#   - Add the "no-nudge" label to PRs you want excluded
+#
+name: "Agentic: Stale PR Nudge"
+
+on:
+  schedule:
+    # Every weekday at 09:00 UTC
+    - cron: "0 9 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: agentic-stale-nudge
+  cancel-in-progress: true
+
+jobs:
+  nudge:
+    uses: onyx-point/agentic-ci/.github/workflows/stale-pr-nudge.yml@main
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    # Uncomment to customize:
+    # with:
+    #   stale_days: 7
+    #   max_prs: 5

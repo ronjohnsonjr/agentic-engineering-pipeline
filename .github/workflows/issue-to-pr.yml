@@ -1,0 +1,174 @@
+# Reusable workflow: Issue-to-PR Autonomous Loop
+# Takes a GitHub issue and autonomously implements it, creating a PR.
+#
+# Usage in consuming repo:
+#   uses: <org>/agentic-ci/.github/workflows/issue-to-pr.yml@main
+#
+name: "Agentic: Issue to PR"
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: "Claude model to use"
+        type: string
+        default: "sonnet"
+      run_quality_gates:
+        description: "Run project quality gates before shipping"
+        type: boolean
+        default: true
+      max_verify_attempts:
+        description: "Max verification fix cycles"
+        type: number
+        default: 3
+      claude_args:
+        description: "Additional CLI args passed to claude-code-action"
+        type: string
+        default: ""
+      mcp_config:
+        description: "JSON MCP server config (e.g., for Linear integration)"
+        type: string
+        default: ""
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+jobs:
+  issue-to-pr:
+    name: Agentic Issue to PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Issue-to-PR Pipeline
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          additional_permissions: |
+            actions: read
+          claude_args: ${{ inputs.claude_args }}
+          prompt: |
+            You are an autonomous implementation agent. Your job is to take
+            GitHub issue #${{ github.event.issue.number }} from "assigned" to
+            "PR created and ready for review."
+
+            ## Phase 1: Understand the issue
+
+            1. Read the issue:
+               ```bash
+               gh issue view ${{ github.event.issue.number }} --json title,body,labels,assignees
+               ```
+
+            2. Read the repo's CLAUDE.md (if it exists) for project conventions.
+
+            3. Check for project-specific agent definitions:
+               - If `.claude/agents/coder.md` exists, read it for implementation guidance.
+               - If `.claude/commands/ship.md` exists, read it for shipping guidance.
+
+            ## Phase 2: Plan
+
+            4. Create a feature branch:
+               ```bash
+               ISSUE_ID=${{ github.event.issue.number }}
+               SLUG=$(gh issue view $ISSUE_ID --json title -q '.title' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | head -c 40)
+               BRANCH="issue-${ISSUE_ID}-${SLUG}"
+               git checkout -b "$BRANCH"
+               ```
+
+            5. Analyze the codebase to understand what needs to change:
+               - Which files/modules are relevant?
+               - Are there existing tests for the affected area?
+               - Are there architecture decision records (adr/) to respect?
+
+            6. Build an implementation plan:
+               - Files to create or modify
+               - Tests to write
+               - Any config or schema changes
+
+            ## Phase 3: Implement
+
+            7. Write the implementation following project conventions.
+
+            8. Write tests for new code paths.
+
+            9. Verify the implementation:
+               - If Makefile with `check` target: `make check`
+               - Else if pyproject.toml: `ruff check . && ruff format --check . && pytest`
+               - Else if package.json: `npm test`
+
+               If verification fails, fix and retry (up to ${{ inputs.max_verify_attempts }} attempts).
+               If still failing after retries, post a comment on the issue explaining
+               what went wrong and stop.
+
+            ## Phase 4: Ship
+
+            10. Create bisectable commits:
+                - Group changes logically
+                - Use conventional commit messages (feat/fix/chore/refactor/test/docs)
+                - Each commit must be independently valid
+
+            11. Push and create PR:
+                ```bash
+                git push -u origin "$BRANCH"
+                gh pr create \
+                  --title "<type>: <summary from issue>" \
+                  --body "## Summary
+                Closes #${{ github.event.issue.number }}
+
+                <bullet points of what changed and why>
+
+                ## Quality Gates
+                - [x] All tests pass
+                - [x] Linting clean
+
+                ## Test plan
+                - [x] New tests added for changed code paths
+                - [x] Existing tests still pass
+
+                ---
+                *Implemented autonomously by Claude via agentic-ci.*"
+                ```
+
+            ## Phase 5: Report
+
+            12. Post a comment on the original issue:
+                ```bash
+                gh issue comment ${{ github.event.issue.number }} \
+                  --body "Implementation complete. PR: <url>
+
+                **What was done:**
+                - <summary>
+
+                **Files changed:**
+                - <list>
+
+                **Test coverage:**
+                - <summary>"
+                ```
+
+            ## Agent override
+
+            If the repo contains `.claude/agents/ship-pipeline.md`, read it and follow
+            its project-specific shipping pipeline instead of the generic Phase 4 above.
+
+            If the repo contains `.claude/agents/coder.md`, follow its coding standards
+            instead of generic conventions.
+
+            ## Rules
+            - Never force push.
+            - Never skip quality gates.
+            - If the issue is ambiguous, implement the most conservative interpretation
+              and note assumptions in the PR body.
+            - If implementation would require more than 500 lines of changes, break it
+              into a smaller first PR and note what remains in the issue comment.

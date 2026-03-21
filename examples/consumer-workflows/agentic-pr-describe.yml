@@ -1,0 +1,27 @@
+# Drop this into your repo's .github/workflows/ to auto-generate PR descriptions.
+# When a PR is opened with an empty body, Claude fills it in from the diff.
+#
+# Prerequisites:
+#   - Set ANTHROPIC_API_KEY as a repo or org secret
+#
+name: "Agentic: PR Describe"
+
+on:
+  pull_request:
+    types: [opened]
+
+concurrency:
+  group: agentic-pr-describe-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  describe:
+    # Skip bot PRs (Dependabot has its own description)
+    if: >
+      !startsWith(github.actor, 'dependabot')
+    uses: onyx-point/agentic-ci/.github/workflows/pr-describe.yml@main
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    # Uncomment to customize:
+    # with:
+    #   min_body_length: 100

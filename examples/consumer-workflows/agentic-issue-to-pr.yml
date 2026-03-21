@@ -1,0 +1,31 @@
+# Drop this into your repo's .github/workflows/ to enable agentic issue-to-PR.
+# When an issue is assigned or labeled "automate", Claude implements it and opens a PR.
+#
+# Prerequisites:
+#   - Set ANTHROPIC_API_KEY as a repo or org secret
+#   - (Optional) Add .claude/agents/coder.md for coding standards
+#   - (Optional) Add .claude/agents/ship-pipeline.md for shipping pipeline
+#
+name: "Agentic: Issue to PR"
+
+on:
+  issues:
+    types: [assigned, labeled]
+
+concurrency:
+  group: agentic-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false  # Don't cancel in-progress implementations
+
+jobs:
+  implement:
+    # Only trigger on assignment OR when the "automate" label is added
+    if: >
+      github.event.action == 'assigned' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'automate')
+    uses: onyx-point/agentic-ci/.github/workflows/issue-to-pr.yml@main
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    # Uncomment to customize:
+    # with:
+    #   max_verify_attempts: 3
+    #   mcp_config: '{"mcpServers":{"Linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}'
