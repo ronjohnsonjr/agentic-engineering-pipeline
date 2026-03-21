@@ -1,10 +1,10 @@
-# Dogfood: CI Remediation
+# Local: CI Remediation
 # Calls the reusable ci-remediate workflow whenever a check suite fails
 # on a PR in this repo.
 #
 # Required repo secret: ANTHROPIC_API_KEY
 #
-name: "Dogfood: CI Remediate"
+name: "Local: CI Remediate"
 
 on:
   check_suite:
@@ -23,8 +23,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Extract PR info from the check_suite event.
-  # check_suite.pull_requests is populated for same-repo PRs.
   detect-pr:
     if: github.event.check_suite.conclusion == 'failure'
     runs-on: ubuntu-latest
