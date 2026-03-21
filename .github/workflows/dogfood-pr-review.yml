@@ -11,6 +11,13 @@ on:
     branches: [main]
     types: [opened, synchronize, ready_for_review]
 
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
 concurrency:
   group: agentic-pr-review-${{ github.ref }}
   cancel-in-progress: true
