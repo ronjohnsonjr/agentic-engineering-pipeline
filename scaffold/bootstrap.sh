@@ -4,7 +4,7 @@
 # agent scaffold. Run from the root of the target repo.
 #
 # Usage:
-#   curl -sL https://raw.githubusercontent.com/onyx-point/agentic-ci/main/scaffold/bootstrap.sh | bash
+#   curl -sL https://raw.githubusercontent.com/ronjohnsonjr/agentic-engineering-pipeline/main/scaffold/bootstrap.sh | bash
 #   # or
 #   ./bootstrap.sh
 #
@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-AGENTIC_CI_RAW="https://raw.githubusercontent.com/onyx-point/agentic-ci/main"
+AGENTIC_CI_RAW="https://raw.githubusercontent.com/ronjohnsonjr/agentic-engineering-pipeline/main"
 
 echo "=== agentic-ci bootstrap ==="
 echo ""
@@ -217,7 +217,7 @@ echo "  1. Set CLAUDE_CODE_OAUTH_TOKEN as a repo secret:"
 echo "     gh secret set CLAUDE_CODE_OAUTH_TOKEN"
 echo ""
 echo "  2. Review and customize the workflows in .github/workflows/agentic-*.yml"
-echo "     - Update 'onyx-point/agentic-ci' to your org's agentic-ci repo"
+echo "     - Update 'ronjohnsonjr/agentic-engineering-pipeline' to your org's agentic-ci repo"
 echo "     - Adjust trigger conditions, timeouts, and inputs"
 echo ""
 echo "  3. Customize agent definitions in .claude/agents/ for your project's"

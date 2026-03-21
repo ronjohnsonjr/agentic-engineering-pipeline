@@ -18,7 +18,7 @@ jobs:
   review:
     # Only run for Dependabot PRs
     if: github.actor == 'dependabot[bot]'
-    uses: onyx-point/agentic-ci/.github/workflows/dependabot-review.yml@main
+    uses: ronjohnsonjr/agentic-engineering-pipeline/.github/workflows/dependabot-review.yml@main
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     # Uncomment to customize:

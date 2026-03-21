@@ -22,7 +22,7 @@ jobs:
     if: >
       github.event.action == 'assigned' ||
       (github.event.action == 'labeled' && github.event.label.name == 'automate')
-    uses: onyx-point/agentic-ci/.github/workflows/issue-to-pr.yml@main
+    uses: ronjohnsonjr/agentic-engineering-pipeline/.github/workflows/issue-to-pr.yml@main
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     # Uncomment to customize:

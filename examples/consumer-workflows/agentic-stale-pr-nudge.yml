@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   nudge:
-    uses: onyx-point/agentic-ci/.github/workflows/stale-pr-nudge.yml@main
+    uses: ronjohnsonjr/agentic-engineering-pipeline/.github/workflows/stale-pr-nudge.yml@main
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     # Uncomment to customize:

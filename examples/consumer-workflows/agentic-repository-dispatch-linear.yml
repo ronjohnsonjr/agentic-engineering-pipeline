@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   implement:
-    uses: onyx-point/agentic-ci/.github/workflows/repository-dispatch-linear.yml@main
+    uses: ronjohnsonjr/agentic-engineering-pipeline/.github/workflows/repository-dispatch-linear.yml@main
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     with:

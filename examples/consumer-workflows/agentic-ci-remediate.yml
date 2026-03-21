@@ -48,7 +48,7 @@ jobs:
   remediate:
     needs: find-pr
     if: needs.find-pr.outputs.has_pr == 'true'
-    uses: onyx-point/agentic-ci/.github/workflows/ci-remediate.yml@main
+    uses: ronjohnsonjr/agentic-engineering-pipeline/.github/workflows/ci-remediate.yml@main
     with:
       pr_number: ${{ needs.find-pr.outputs.pr_number }}
       pr_branch: ${{ needs.find-pr.outputs.pr_branch }}

@@ -27,7 +27,7 @@ and the `.claude/agents/` convention for project-specific agent behavior.
 From the root of any repo:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/onyx-point/agentic-ci/main/scaffold/bootstrap.sh | bash
+curl -sL https://raw.githubusercontent.com/ronjohnsonjr/agentic-engineering-pipeline/main/scaffold/bootstrap.sh | bash
 ```
 
 This creates the consumer workflows in `.github/workflows/` and minimal agent
@@ -44,7 +44,7 @@ stubs in `.claude/agents/`.
    ```
 
 3. Update the `uses:` references in each workflow if your org name differs
-   from `onyx-point`:
+   from `ronjohnsonjr`:
    ```yaml
    uses: YOUR-ORG/agentic-ci/.github/workflows/pr-review.yml@main
    ```
@@ -56,7 +56,7 @@ stubs in `.claude/agents/`.
 ```
 your-repo/
   .github/workflows/
-    agentic-pr-review.yml      <-- thin caller (5-20 lines)
+    agentic-pr-review.yml      <-- thin caller (copied from examples/consumer-workflows/)
     agentic-ci-remediate.yml   <-- thin caller
     ...
   .claude/
@@ -67,11 +67,17 @@ your-repo/
       ...
   CLAUDE.md                    <-- project conventions (optional)
 
-onyx-point/agentic-ci/          (this repo)
+ronjohnsonjr/agentic-engineering-pipeline/   (this repo)
   .github/workflows/
     pr-review.yml              <-- reusable workflow (workflow_call)
     ci-remediate.yml           <-- reusable workflow
     ...
+  examples/consumer-workflows/
+    agentic-pr-review.yml      <-- copy this into your-repo/.github/workflows/
+    agentic-ci-remediate.yml
+    ...
+  scaffold/
+    bootstrap.sh               <-- copies all consumer workflows in one command
 ```
 
 The consumer workflows are thin callers that define triggers and pass
@@ -130,7 +136,7 @@ Every reusable workflow accepts inputs for common configuration:
 ```yaml
 jobs:
   review:
-    uses: onyx-point/agentic-ci/.github/workflows/pr-review.yml@main
+    uses: ronjohnsonjr/agentic-engineering-pipeline/.github/workflows/pr-review.yml@main
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     with:
@@ -211,7 +217,64 @@ with:
 Then add a `.claude/agents/repository-dispatch-linear.md` with your project-specific
 status mappings and comment templates.
 
-### Linear/Jira/project management (manual)
+### Jira (planned)
+
+A Jira webhook bridge — mirroring the Linear integration — is on the roadmap.
+It will add `src/integrations/jira/` and a `repository-dispatch-jira.yml`
+reusable workflow that fires when a Jira issue transitions to a configured
+status (e.g. "In Progress" or a custom "Ready for Agent" state).
+
+The planned flow:
+
+```
+Jira issue → status change
+  → Jira fires webhook to bridge server
+    → bridge server calls POST /repos/{repo}/dispatches
+      → GitHub fires repository_dispatch event: jira-issue-ready
+        → agentic-repository-dispatch-jira.yml picks it up
+          → Claude implements the issue and opens a PR
+```
+
+Key differences from the Linear bridge: Jira uses REST (not GraphQL), Basic
+auth (email + API token), and requires fetching available transitions before
+updating status — you can't set a state ID directly.
+
+If you want to contribute this, see [How to Add a New Workflow](CLAUDE.md) for
+the conventions to follow.
+
+### No API access? Use GitHub Issues as a bridge
+
+If your team uses Jira, Asana, Notion, a spreadsheet, or any tool you can't
+or don't want to connect via API (no admin access, no webhook permissions,
+enterprise firewall), the simplest path is to use a GitHub Issue as the
+handoff point.
+
+**One-liner from the command line:**
+
+```bash
+gh issue create \
+  --title "PROJ-123: <paste title from Jira>" \
+  --body "<paste description from Jira>" \
+  --label local
+```
+
+This creates the GitHub issue and immediately triggers the pipeline — Claude
+reads the issue body just as it would read a native GitHub issue. The `local`
+label is the trigger; replace it with whatever label your consumer workflow
+listens on (see `agentic-issue-to-pr.yml`).
+
+**From the GitHub UI:**
+
+1. Open **Issues → New issue**
+2. Paste the Jira ticket title and description
+3. Add the trigger label
+4. Submit — the pipeline fires within seconds
+
+The agent will reference the Jira ticket key (e.g. `PROJ-123`) in its PR
+description if you include it in the issue title. No API key, no webhook
+server, no admin permissions required.
+
+### Linear one-off (no webhook bridge)
 
 The `issue-to-pr` workflow works with GitHub Issues by default. For one-off
 Linear issues without the webhook bridge, pass an MCP config:
@@ -244,11 +307,12 @@ wait and reviews the PR directly.
 |--------|----------|---------|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Yes | All workflows |
 | `LINEAR_API_KEY` | No | issue-to-pr (if using Linear MCP) |
+| `JIRA_API_TOKEN` | No | jira bridge (planned — not yet implemented) |
 
 Set at the org level to avoid per-repo configuration:
 
 ```bash
-gh secret set CLAUDE_CODE_OAUTH_TOKEN --org onyx-point --visibility all
+gh secret set CLAUDE_CODE_OAUTH_TOKEN --org ronjohnsonjr --visibility all
 ```
 
 ## Cost Considerations
