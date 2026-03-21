@@ -100,6 +100,12 @@ jobs:
             5. If auto_approve_patch is true AND this is a patch bump AND
                risk is LOW: approve the PR with `gh pr review --approve`.
 
+            ## Agent override
+
+            If the repo contains `.claude/agents/dependabot-review.md`, read it
+            and follow its project-specific instructions. Those instructions take
+            precedence over the generic steps above for any conflicts.
+
             ## Rules
             - Be conservative. When in doubt, flag for human review.
             - Major version bumps are always MEDIUM risk minimum.
