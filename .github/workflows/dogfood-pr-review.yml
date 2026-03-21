@@ -11,6 +11,10 @@ on:
     branches: [main]
     types: [opened, synchronize, ready_for_review]
 
+concurrency:
+  group: agentic-pr-review-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pr-review:
     if: "!github.event.pull_request.draft"

@@ -97,6 +97,12 @@ jobs:
                gh pr edit ${{ github.event.pull_request.number }} --body "<generated body>"
                ```
 
+            ## Agent override
+
+            If the repo contains `.claude/agents/pr-describe.md`, read it
+            and follow its project-specific instructions. Those instructions take
+            precedence over the generic steps above for any conflicts.
+
             ## Rules
             - Be factual. Describe what the code does, not what you think the intent was.
             - If commit messages are descriptive, use them as source material.

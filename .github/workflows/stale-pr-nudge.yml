@@ -121,6 +121,12 @@ jobs:
                - Nudged: N
                - Skipped (already nudged / labeled): N
 
+            ## Agent override
+
+            If the repo contains `.claude/agents/stale-pr-nudge.md`, read it
+            and follow its project-specific instructions. Those instructions take
+            precedence over the generic steps above for any conflicts.
+
             ## Rules
             - Be helpful and friendly, not nagging.
             - Never close or modify PRs, only comment.
