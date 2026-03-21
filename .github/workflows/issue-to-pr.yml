@@ -20,11 +20,11 @@ on:
       max_verify_attempts:
         description: "Max verification fix cycles"
         type: number
-        default: 3
+        default: 1
       claude_args:
         description: "Additional CLI args passed to claude-code-action"
         type: string
-        default: "--dangerously-skip-permissions"
+        default: "--dangerously-skip-permissions --max-turns 20"
       mcp_config:
         description: "JSON MCP server config (e.g., for Linear integration)"
         type: string
