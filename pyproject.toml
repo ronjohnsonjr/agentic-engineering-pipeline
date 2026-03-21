@@ -12,7 +12,6 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pydantic>=2.0",
 ]
-dependencies = []
 
 [project.optional-dependencies]
 dev = [
@@ -20,12 +19,9 @@ dev = [
     "pytest-asyncio>=0.23",
     "respx>=0.21",
     "httpx>=0.27",
-]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
     "pyyaml>=6",
 ]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 testpaths = ["tests"]
