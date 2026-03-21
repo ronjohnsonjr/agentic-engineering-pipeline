@@ -207,6 +207,19 @@ gh secret set ANTHROPIC_API_KEY --org <your-org> --visibility all
 
 ---
 
+## Claude Code Commands
+
+Project-specific slash commands live in `.claude/commands/`. Invoke them with `/project:<name>` in Claude Code.
+
+| Command | Usage | What it does |
+|---|---|---|
+| `new-workflow` | `/project:new-workflow <name>` | Creates a reusable workflow, consumer example, and test file for a new workflow named `<name>`. Also updates `scaffold/bootstrap.sh` and `README.md`. |
+| `new-agent` | `/project:new-agent <name>` | Creates a new `.claude/agents/<name>.md` file with correct frontmatter and behavior instructions. |
+| `run-pipeline` | `/project:run-pipeline <issue-number>` | Walks a GitHub issue through all pipeline stages (clarify → research → plan → implement → test → review → PR). |
+| `validate-all` | `/project:validate-all` | Runs the test suite, lints all workflow YAML, validates all agent frontmatter, and cross-checks the workflow inventory. |
+
+---
+
 ## Contribution Guidelines
 
 - **Read before editing.** Understand an existing workflow fully before modifying it.
