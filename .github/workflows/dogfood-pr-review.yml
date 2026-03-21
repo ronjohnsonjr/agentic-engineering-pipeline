@@ -1,10 +1,10 @@
-# Dogfood: PR Review
+# Local: PR Review
 # Calls the reusable pr-review workflow for AI-powered code review on
 # every PR opened or updated against main in this repo.
 #
 # Required repo secret: ANTHROPIC_API_KEY
 #
-name: "Dogfood: PR Review"
+name: "Local: PR Review"
 
 on:
   pull_request:
