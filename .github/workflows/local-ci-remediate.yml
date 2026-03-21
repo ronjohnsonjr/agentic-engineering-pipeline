@@ -1,22 +1,28 @@
-# Dogfood: CI Remediation
+# Local: CI Remediation
 # Calls the reusable ci-remediate workflow whenever a check suite fails
 # on a PR in this repo.
 #
 # Required repo secret: ANTHROPIC_API_KEY
 #
-name: "Dogfood: CI Remediate"
+name: "Local: CI Remediate"
 
 on:
   check_suite:
     types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+  checks: read
 
 concurrency:
   group: agentic-ci-remediate-${{ github.event.check_suite.id }}
   cancel-in-progress: false
 
 jobs:
-  # Extract PR info from the check_suite event.
-  # check_suite.pull_requests is populated for same-repo PRs.
   detect-pr:
     if: github.event.check_suite.conclusion == 'failure'
     runs-on: ubuntu-latest
@@ -33,8 +39,8 @@ jobs:
           PR_COUNT=$(echo "$PULL_REQUESTS" | jq 'length')
           if [ "$PR_COUNT" -gt 0 ]; then
             echo "has_pr=true"                                          >> "$GITHUB_OUTPUT"
-            echo "pr_number=$(echo "$PULL_REQUESTS" | jq -r '.[0].number')" >> "$GITHUB_OUTPUT"
-            echo "pr_branch=$(echo "$PULL_REQUESTS" | jq -r '.[0].head.ref')" >> "$GITHUB_OUTPUT"
+            echo "pr_number=$(echo "$PULL_REQUESTS" | jq -r '.[0].number')}" >> "$GITHUB_OUTPUT"
+            echo "pr_branch=$(echo "$PULL_REQUESTS" | jq -r '.[0].head.ref')}" >> "$GITHUB_OUTPUT"
           else
             echo "has_pr=false" >> "$GITHUB_OUTPUT"
           fi

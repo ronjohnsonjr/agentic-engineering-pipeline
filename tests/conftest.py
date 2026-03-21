@@ -19,11 +19,11 @@ REUSABLE_WORKFLOW_NAMES = [
 ]
 
 DOGFOOD_WORKFLOW_NAMES = [
-    "dogfood-ci-remediate",
-    "dogfood-issue-to-pr",
-    "dogfood-pr-describe",
-    "dogfood-pr-review",
-    "dogfood-quality-sweep",
+    "local-ci-remediate",
+    "local-issue-to-pr",
+    "local-pr-describe",
+    "local-pr-review",
+    "local-quality-sweep",
 ]
 
 

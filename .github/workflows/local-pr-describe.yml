@@ -1,15 +1,20 @@
-# Dogfood: PR Description
+# Local: PR Description
 # Calls the reusable pr-describe workflow to auto-generate PR descriptions
 # when a PR targeting main is opened with a minimal or empty body.
 #
 # Required repo secret: ANTHROPIC_API_KEY
 #
-name: "Dogfood: PR Describe"
+name: "Local: PR Describe"
 
 on:
   pull_request:
     branches: [main]
     types: [opened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
 
 concurrency:
   group: agentic-pr-describe-${{ github.ref }}
