@@ -33,6 +33,7 @@ WORKFLOWS=(
   "agentic-pr-describe.yml"
   "agentic-dependabot-review.yml"
   "agentic-stale-pr-nudge.yml"
+  "agentic-repository-dispatch-linear.yml"
 )
 
 echo "Downloading consumer workflows..."

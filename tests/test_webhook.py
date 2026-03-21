@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import json
-import os
 
 import pytest
 import respx
@@ -90,8 +89,9 @@ class TestSignatureValidation:
 
 class TestStateChangeDispatch:
     @respx.mock
-    def test_in_progress_state_change_dispatches_issue_to_pr(self, client):
-        dispatch_url = f"{GITHUB_API_URL}/repos/{GITHUB_REPO}/actions/workflows/issue-to-pr.yml/dispatches"
+    def test_trigger_status_fires_repository_dispatch(self, client):
+        """Default trigger status ("In Progress") fires a repository_dispatch event."""
+        dispatch_url = f"{GITHUB_API_URL}/repos/{GITHUB_REPO}/dispatches"
         respx.post(dispatch_url).mock(return_value=httpx.Response(204))
 
         payload = {
@@ -109,8 +109,71 @@ class TestStateChangeDispatch:
         assert resp.json() == {"ok": True}
 
     @respx.mock
-    def test_non_in_progress_state_does_not_dispatch(self, client):
-        # No mock needed — if dispatch is called against an unmocked URL, respx raises
+    def test_repository_dispatch_payload_contains_issue_fields(self, client):
+        """The repository_dispatch client_payload includes issue_id and issue_title."""
+        dispatch_url = f"{GITHUB_API_URL}/repos/{GITHUB_REPO}/dispatches"
+        mock_route = respx.post(dispatch_url).mock(return_value=httpx.Response(204))
+
+        payload = {
+            "type": "Issue",
+            "action": "update",
+            "data": {
+                "id": "issue-42",
+                "title": "Implement feature X",
+                "state": {"id": "s2", "name": "In Progress"},
+                "labels": {"nodes": []},
+            },
+        }
+        _post_webhook(client, payload)
+
+        assert mock_route.called
+        sent = json.loads(mock_route.calls[0].request.content)
+        assert sent["event_type"] == "linear-issue-ready"
+        assert sent["client_payload"]["issue_id"] == "issue-42"
+        assert sent["client_payload"]["issue_title"] == "Implement feature X"
+        assert sent["client_payload"]["trigger_status"] == "In Progress"
+
+    @respx.mock
+    def test_custom_trigger_status_fires_repository_dispatch(self, client, monkeypatch):
+        """LINEAR_TRIGGER_STATUS env var overrides the default trigger status."""
+        monkeypatch.setenv("LINEAR_TRIGGER_STATUS", "Ready for Agent")
+        dispatch_url = f"{GITHUB_API_URL}/repos/{GITHUB_REPO}/dispatches"
+        respx.post(dispatch_url).mock(return_value=httpx.Response(204))
+
+        payload = {
+            "type": "Issue",
+            "action": "update",
+            "data": {
+                "id": "issue-1",
+                "title": "Build it",
+                "state": {"id": "s3", "name": "Ready for Agent"},
+                "labels": {"nodes": []},
+            },
+        }
+        resp = _post_webhook(client, payload)
+        assert resp.status_code == 200
+
+    @respx.mock
+    def test_default_status_does_not_fire_when_custom_status_set(self, client, monkeypatch):
+        """When LINEAR_TRIGGER_STATUS is overridden, default "In Progress" no longer fires."""
+        monkeypatch.setenv("LINEAR_TRIGGER_STATUS", "Ready for Agent")
+        # No mock needed — respx raises if any unregistered URL is called
+        payload = {
+            "type": "Issue",
+            "action": "update",
+            "data": {
+                "id": "issue-1",
+                "title": "Build it",
+                "state": {"id": "s2", "name": "In Progress"},
+                "labels": {"nodes": []},
+            },
+        }
+        resp = _post_webhook(client, payload)
+        assert resp.status_code == 200
+
+    @respx.mock
+    def test_non_trigger_state_does_not_dispatch(self, client):
+        """States that don't match the trigger status produce no dispatch."""
         payload = {
             "type": "Issue",
             "action": "update",

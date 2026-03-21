@@ -14,6 +14,7 @@ and the `.claude/agents/` convention for project-specific agent behavior.
 | **pr-review** | PR opened/ready | Copilot + Claude collaborative review cycle. Waits for Copilot, catalogs all comments, resolves each one (fix/acknowledge/decline), pushes fixes, posts summary. |
 | **ci-remediate** | CI check fails | Reads failure logs, diagnoses root cause, applies minimal fix, pushes, re-verifies. Up to 3 rounds before escalating. |
 | **issue-to-pr** | Issue assigned/labeled | Takes an issue from "assigned" to "PR created": plans, implements, tests, commits, pushes, creates PR with full description. |
+| **repository-dispatch-linear** | `repository_dispatch: linear-issue-ready` | Implements a Linear issue and opens a PR when the Linear webhook bridge fires a `repository_dispatch` event. No manual `gh workflow run` required. |
 | **quality-sweep** | Weekly schedule/dispatch | Scans for dead code, unused imports, generic naming, redundant comments. Auto-commits a cleanup PR. |
 | **pr-describe** | PR opened (empty body) | Auto-generates a rich PR description from the diff and commit history. |
 | **dependabot-review** | Dependabot PR opened | Reviews changelog, checks for breaking changes, posts risk assessment. Optionally auto-approves patch bumps. |
@@ -148,10 +149,72 @@ keeps agent behavior consistent with your team's standards.
 
 ## Integrating with Your Existing Stack
 
-### Linear/Jira/project management
+### Linear webhook bridge (automatic dispatch)
 
-The `issue-to-pr` workflow works with GitHub Issues by default. To integrate
-with Linear, pass an MCP config:
+The `repository-dispatch-linear` workflow lets Linear trigger the agentic
+pipeline automatically — no `gh workflow run` command needed.
+
+**How it works:**
+
+```
+Linear issue → "Ready for Agent"
+  → Linear fires webhook to your bridge server
+    → bridge server calls POST /repos/{repo}/dispatches
+      → GitHub fires repository_dispatch event: linear-issue-ready
+        → agentic-repository-dispatch-linear.yml picks it up
+          → Claude implements the issue and opens a PR
+```
+
+**Setup (one time):**
+
+1. Deploy the webhook bridge server (the FastAPI app in `src/integrations/linear/`):
+   ```bash
+   uvicorn src.integrations.linear.webhook:app --host 0.0.0.0 --port 8080
+   ```
+   Or deploy to Railway, Render, Fly.io, or any HTTPS host.
+
+2. Configure environment variables on the bridge server:
+   ```
+   LINEAR_WEBHOOK_SECRET=<generate with openssl rand -hex 32>
+   GITHUB_TOKEN=<PAT with repo + actions:write scopes>
+   GITHUB_REPOSITORY=your-org/your-repo
+   GITHUB_DEFAULT_BRANCH=main
+
+   # Optional: change which Linear status fires the pipeline (default: "In Progress")
+   LINEAR_TRIGGER_STATUS=Ready for Agent
+   ```
+
+3. Register the webhook in Linear:
+   - Go to **Settings → API → Webhooks → New webhook**
+   - URL: `https://your-bridge-server/webhooks/linear`
+   - Select resource type: **Issues**
+   - Copy the signing secret and set it as `LINEAR_WEBHOOK_SECRET`
+
+4. Copy `examples/consumer-workflows/agentic-repository-dispatch-linear.yml`
+   into your repo's `.github/workflows/` and set `ANTHROPIC_API_KEY` as a secret.
+
+**Trigger status:**
+
+By default the bridge fires when an issue moves to **"In Progress"**. Override
+with the `LINEAR_TRIGGER_STATUS` env var to match your team's workflow state
+name (e.g. `"Ready for Agent"`, `"Queued"`, `"Backlog → Dev"`).
+
+**MCP integration (optional):**
+
+Pass the Linear MCP config to give Claude full access to issue details:
+
+```yaml
+with:
+  mcp_config: '{"mcpServers":{"Linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}'
+```
+
+Then add a `.claude/agents/repository-dispatch-linear.md` with your project-specific
+status mappings and comment templates.
+
+### Linear/Jira/project management (manual)
+
+The `issue-to-pr` workflow works with GitHub Issues by default. For one-off
+Linear issues without the webhook bridge, pass an MCP config:
 
 ```yaml
 with:
@@ -202,6 +265,7 @@ Each workflow invocation uses Claude API tokens. Approximate per-invocation cost
 | ci-remediate | 30-150K | ~$0.15-0.75 |
 | quality-sweep | 50-200K | ~$0.25-1.00 |
 | issue-to-pr | 100-500K | ~$0.50-2.50 |
+| repository-dispatch-linear | 100-500K | ~$0.50-2.50 |
 
 To control costs:
 - Use `haiku` model for lightweight tasks (pr-describe, stale-pr-nudge)
