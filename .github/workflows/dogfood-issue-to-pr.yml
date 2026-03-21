@@ -10,6 +10,13 @@ on:
   issues:
     types: [labeled]
 
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
 concurrency:
   group: agentic-issue-to-pr-${{ github.event.issue.number }}
   cancel-in-progress: false
