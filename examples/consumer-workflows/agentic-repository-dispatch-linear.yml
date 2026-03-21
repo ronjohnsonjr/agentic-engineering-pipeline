@@ -1,0 +1,41 @@
+# Drop this into your repo's .github/workflows/ to enable the Linear webhook bridge.
+# When your Linear webhook server fires a "linear-issue-ready" repository_dispatch
+# event (triggered by an issue moving to the configured status), Claude implements
+# the issue and opens a PR — no manual `gh workflow run` required.
+#
+# Prerequisites:
+#   - Deploy the Linear webhook server (src/integrations/linear/) and register
+#     the /webhooks/linear endpoint URL in your Linear workspace settings.
+#   - Set LINEAR_WEBHOOK_SECRET on the webhook server to verify payloads.
+#   - Set GITHUB_TOKEN on the webhook server (needs repo + actions:write scope).
+#   - Set GITHUB_REPOSITORY on the webhook server (e.g. "your-org/your-repo").
+#   - (Optional) Set LINEAR_TRIGGER_STATUS on the webhook server to change the
+#     Linear state name that fires the pipeline (default: "In Progress").
+#   - Set ANTHROPIC_API_KEY as a repo or org secret.
+#   - (Optional) Add .claude/agents/coder.md for coding standards.
+#   - (Optional) Add .claude/agents/repository-dispatch-linear.md for overrides.
+#
+name: "Agentic: Linear webhook bridge"
+
+on:
+  repository_dispatch:
+    types: [linear-issue-ready]
+
+concurrency:
+  group: agentic-linear-${{ github.event.client_payload.issue_id }}
+  cancel-in-progress: false  # Don't cancel in-progress implementations
+
+jobs:
+  implement:
+    uses: onyx-point/agentic-ci/.github/workflows/repository-dispatch-linear.yml@main
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    with:
+      issue_id: ${{ github.event.client_payload.issue_id }}
+      issue_title: ${{ github.event.client_payload.issue_title }}
+      trigger_status: ${{ github.event.client_payload.trigger_status }}
+      ref: ${{ github.event.client_payload.ref || 'main' }}
+      # Uncomment to customize:
+      # model: sonnet
+      # max_verify_attempts: 3
+      # mcp_config: '{"mcpServers":{"Linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}'
