@@ -166,6 +166,289 @@ All workflows use a concurrency group keyed on a unique identifier (PR number or
 
 ---
 
+## Pipeline Flow
+
+The 12-stage agentic engineering pipeline, as coordinated by `.claude/agents/orchestrator.md`. Hard gates (diamonds) are blocking: the downstream stage cannot begin until the gate condition is satisfied.
+
+```mermaid
+flowchart TD
+    ORC([1. Orchestrator\norchestrator.md])
+    CLR["2. Clarifier\nclarifier.md"]
+    RES["3. Research\nresearcher.md"]
+    PLN["4. Planner\nplanner.md"]
+    PRG["5. Programmer\ncoder.md"]
+    UNT["6. Unit Test\ntest-unit.md"]
+    BAK["7. Backend Test\ntest-integration.md"]
+    FRT["8. Frontend Test\ntest-e2e.md"]
+    TGATE{"GATE\nAll three\ntests PASS?"}
+    PRC["9. PR Creation"]
+    REV["10. AI Code Review\nreviewer.md"]
+    REM["11. PR Remediation\nremediator.md"]
+    HCL([12. Human Close])
+    GHALT[/Halt: await human/]
+
+    ORC --> CLR
+    CLR -- CLEAR --> RES
+    CLR -- NEEDS CLARITY --> GHALT
+
+    RES -- "GATE: brief complete" --> PLN
+    PLN -- "GATE: plan complete" --> PRG
+
+    PRG --> UNT & BAK & FRT
+
+    UNT -- PASS --> TGATE
+    BAK -- PASS --> TGATE
+    FRT -- PASS --> TGATE
+    UNT -- FAIL --> GHALT
+    BAK -- FAIL --> GHALT
+    FRT -- FAIL --> GHALT
+
+    TGATE -- "GATE: all three pass" --> PRC
+    PRC --> REV
+    REV -- APPROVED --> HCL
+    REV -- "CHANGES REQUIRED\ncycle n of 3" --> REM
+    REM -- "cycle < 3" --> REV
+    REM -- "cycle 3 exhausted" --> GHALT
+
+    classDef gate fill:#f5a623,stroke:#d48c1a,color:#000
+    classDef halt fill:#d0021b,stroke:#a00118,color:#fff
+    classDef terminal fill:#417505,stroke:#2d5204,color:#fff
+    class TGATE gate
+    class GHALT halt
+    class ORC,HCL terminal
+```
+
+All agent config files referenced above live in `.claude/agents/` of the consumer repo. Files created by `scaffold/bootstrap.sh` are marked **[scaffold]**; the remainder ship with this repo.
+
+| Stage | Agent file | Model | Created by |
+|-------|-----------|-------|------------|
+| Orchestrator | `orchestrator.md` | claude-opus-4-6 | this repo |
+| Clarifier | `clarifier.md` | claude-haiku-4-5 | this repo |
+| Research | `researcher.md` | claude-sonnet-4-6 | this repo |
+| Planner | `planner.md` | claude-opus-4-6 | this repo |
+| Programmer | `coder.md` | claude-sonnet-4-6 | [scaffold] |
+| Unit Test | `test-unit.md` | claude-sonnet-4-6 | this repo |
+| Backend Test | `test-integration.md` | claude-sonnet-4-6 | this repo |
+| Frontend Test | `test-e2e.md` | claude-sonnet-4-6 | this repo |
+| PR Creation | (inline prompt in `issue-to-pr.yml`) | -- | this repo |
+| AI Code Review | `reviewer.md` | claude-sonnet-4-6 | [scaffold] |
+| PR Remediation | `remediator.md` | claude-sonnet-4-6 | this repo |
+| Human Close | (no agent) | -- | -- |
+
+### Hard Gate Summary
+
+| Gate | Blocking condition | Stage that is blocked |
+|------|-------------------|-----------------------|
+| After Clarifier | Verdict must be CLEAR | Research cannot start |
+| After Research | Research brief must be complete | Planner cannot start |
+| After Planner | Plan must be complete | Programmer cannot start |
+| After all three tests | Unit, Backend, and Frontend must all PASS | PR Creation cannot start |
+| After AI Code Review | Reviewer must return APPROVED | PR stays open; Human Close does not happen |
+
+### Stage Skip Rules
+
+The Orchestrator may skip certain stages based on the change type. Skipped stages satisfy their gate automatically; the skip reason is recorded in the final `PIPELINE RESULT` comment.
+
+- Skip `Clarifier` only if the issue contains explicit acceptance criteria and no ambiguous scope.
+- Skip `Backend Test` (`test-integration.md`) if no API contracts, database schemas, or inter-service calls were changed.
+- Skip `Frontend Test` (`test-e2e.md`) if the change has no UI surface (pure backend or library change).
+- Never skip `Unit Test`, `AI Code Review`, or `PR Remediation` when review flags issues.
+
+---
+
+## Failure Modes
+
+Documents what happens when each agent fails or times out, including retry policy and the escalation path to a human. All agent files live in `.claude/agents/` of the consumer repo.
+
+The full pipeline job times out after **60 minutes** (`timeout-minutes: 60` in `issue-to-pr.yml`). If GitHub Actions kills the job, the issue remains in whatever state the Orchestrator last wrote. Inspect the run log to determine where to resume, then re-trigger with `gh workflow run`.
+
+### 1. Orchestrator (`.claude/agents/orchestrator.md`)
+
+| Event | Behavior |
+|-------|----------|
+| Agent errors mid-pipeline | Halts immediately. Posts `PIPELINE RESULT: HALTED` to the issue documenting the failing stage and last known state. |
+| Job timeout (60 min) | GitHub Actions kills the job. No cleanup comment is posted. Branch and issue are left in last known state. |
+
+**Retry policy**: the Orchestrator does not retry itself. It delegates retries to individual stage agents.
+
+**Escalation**: `PIPELINE RESULT: HALTED` comment on the issue. Human must inspect the run log and re-trigger.
+
+**Resume from halt**: re-trigger with `gh workflow run agentic-issue-to-pr.yml`. The Orchestrator re-reads the issue and any prior comments to reconstruct state before continuing.
+
+---
+
+### 2. Clarifier (`.claude/agents/clarifier.md`)
+
+| Event | Behavior |
+|-------|----------|
+| Returns NEEDS CLARITY | Pipeline halts. Orchestrator posts the blocking questions to the issue, tagging the author. |
+| Returns CLEAR | Pipeline proceeds to Research. |
+| Agent errors or timeout | Treated as NEEDS CLARITY. Pipeline halts. |
+
+**Retry policy**: none. Clarifier runs once per trigger. If NEEDS CLARITY, a human must answer and re-trigger.
+
+**Escalation**: post blocking questions to the issue. If the repo has a `needs-clarification` label, apply it.
+
+---
+
+### 3. Research (`.claude/agents/researcher.md`)
+
+| Event | Behavior |
+|-------|----------|
+| Completes successfully | Returns RESEARCH BRIEF. Orchestrator passes it to Planner. |
+| Incomplete output or agent error | Orchestrator halts. Posts partial findings (if any) and the error to the issue. |
+| Timeout | Orchestrator halts. Posts whatever partial brief was produced. |
+
+**Retry policy**: no automatic retry. Research is read-only; re-triggering is safe.
+
+**Escalation**: halt + issue comment with the error. Human completes or corrects the brief manually before re-triggering.
+
+---
+
+### 4. Planner (`.claude/agents/planner.md`)
+
+| Event | Behavior |
+|-------|----------|
+| Completes successfully | Returns IMPLEMENTATION PLAN. Orchestrator passes it to Programmer. |
+| Plan incomplete or agent error | Orchestrator halts. Posts the partial plan to the issue with a note on what is missing. |
+| Timeout | Orchestrator halts. Documents failing stage. |
+
+**Retry policy**: no automatic retry. Planning is idempotent; re-triggering is safe.
+
+**Escalation**: halt + issue comment. Human reviews the partial plan, completes it as a comment, then re-triggers.
+
+---
+
+### 5. Programmer (`.claude/agents/coder.md`)
+
+| Event | Behavior |
+|-------|----------|
+| Quality gate passes | Proceeds to the three test stages. |
+| Quality gate fails | Programmer fixes and re-runs. Repeats up to `max_verify_attempts` times (default: 3). |
+| All verify attempts exhausted | Posts a comment to the issue with the gate failure output (first 20 lines). Pipeline halts. |
+| Agent errors or timeout | Orchestrator halts. Partial code changes remain on the branch for human inspection. |
+
+**Retry policy**: up to `max_verify_attempts` (default 3) fix-verify cycles within a single run.
+
+**Escalation**: halt + issue comment with the quality gate failure. Human must diagnose and either fix manually or update the plan, then re-trigger.
+
+---
+
+### 6. Unit Test (`.claude/agents/test-unit.md`)
+
+| Event | Behavior |
+|-------|----------|
+| PASS (coverage >= 80% on changed modules) | Gate contribution satisfied. |
+| FAIL (tests failing or coverage below threshold) | All-tests gate blocked. PR Creation cannot proceed. Orchestrator halts. |
+| Agent errors or timeout | Treated as FAIL. |
+
+**Retry policy**: none. If tests fail, the implementation must be corrected first (re-trigger, or let `ci-remediate` workflow handle it).
+
+**Escalation**: halt + issue comment with failing test names and first 20 lines of failure output.
+
+---
+
+### 7. Backend Test (`.claude/agents/test-integration.md`)
+
+| Event | Behavior |
+|-------|----------|
+| PASS | Gate contribution satisfied. |
+| FAIL | All-tests gate blocked. PR Creation cannot proceed. Orchestrator halts. |
+| Skipped (no API or DB changes) | Gate contribution satisfied. Skip reason recorded in pipeline result. |
+| Agent errors or timeout | Treated as FAIL unless the stage was going to be skipped. |
+
+**Retry policy**: none. Integration tests use real databases; retrying without cleanup can corrupt state. Operator must investigate before re-triggering.
+
+**Escalation**: halt + issue comment with failed endpoints or queries and error summary.
+
+---
+
+### 8. Frontend Test (`.claude/agents/test-e2e.md`)
+
+| Event | Behavior |
+|-------|----------|
+| PASS (functional tests pass, no critical a11y violations) | Gate contribution satisfied. |
+| FAIL (test failure or critical a11y violation) | All-tests gate blocked. PR Creation cannot proceed. Orchestrator halts. |
+| Visual regression diffs found | Pipeline halts for human snapshot review. Not treated as PASS until snapshots are intentionally updated. |
+| Skipped (no UI changes) | Gate contribution satisfied. Skip reason recorded. |
+| Agent errors or timeout | Treated as FAIL. |
+
+**Retry policy**: none. E2E tests are environment-sensitive; retrying may mask flakiness. Operator investigates before re-triggering.
+
+**Escalation**: halt + issue comment with failing flow names, a11y violation count, and details of any critical violations.
+
+---
+
+### 9. PR Creation
+
+| Event | Behavior |
+|-------|----------|
+| PR created successfully | Pipeline proceeds to AI Code Review. |
+| Branch already has an open PR | Orchestrator re-uses the existing PR and continues. |
+| `git push` fails (auth, push protection) | Orchestrator halts. Documents the push error. |
+| `gh pr create` fails (transient API error) | One retry. If still failing, halt. |
+| Timeout | Orchestrator halts. Branch may or may not be pushed. Human inspects and creates PR manually. |
+
+**Retry policy**: one retry on `gh pr create` for transient API errors. No retry on push failures.
+
+**Escalation**: halt + issue comment with the specific error from `git push` or `gh pr create`.
+
+---
+
+### 10. AI Code Review (`.claude/agents/reviewer.md`)
+
+| Event | Behavior |
+|-------|----------|
+| Returns APPROVED | Pipeline advances to Human Close. |
+| Returns CHANGES REQUIRED | Orchestrator delegates to Remediator. Counts as one review cycle. |
+| Same findings returned after a fix cycle (convergence) | Orchestrator stops early and escalates rather than entering another cycle. |
+| Agent errors or timeout | Treated as CHANGES REQUIRED for safety. One remediation cycle is attempted. |
+
+**Retry policy**: up to 3 review-remediation cycles total (set in `orchestrator.md`).
+
+**Escalation**: after 3 cycles or convergence, halt + PR comment listing unresolved blocking issues. Human addresses them and re-triggers review with `gh workflow run agentic-pr-review.yml`.
+
+---
+
+### 11. PR Remediation (`.claude/agents/remediator.md`)
+
+| Event | Behavior |
+|-------|----------|
+| COMPLETE + quality gate PASS | Returns control to AI Code Review for another pass. |
+| PARTIAL (some blocking issues unresolved) | Reports unresolved items. Returns to AI Code Review. If this is cycle 3, escalates instead. |
+| FAILED (quality gate fails after fixes) | Stops immediately. Does not return to reviewer. Escalates to human. |
+| Agent errors or timeout | Treated as FAILED. |
+
+**Retry policy**: Remediator runs once per review cycle. The outer limit of 3 cycles is enforced by the Orchestrator.
+
+**Escalation**: halt + PR comment with unresolved blocking issues and quality gate failure output. Human takes over the PR directly.
+
+---
+
+### 12. Human Close
+
+This stage is not automated. It represents a human merging or closing the PR after AI Code Review returns APPROVED. No failure mode applies.
+
+If the PR sits open without activity for `stale_days` (default 5), the `stale-pr-nudge` workflow posts a status comment diagnosing the blocker and suggesting a next step.
+
+---
+
+### Global Timeout Reference
+
+| Workflow | Job timeout | On expiry |
+|----------|------------|-----------|
+| `issue-to-pr.yml` | 60 min | Branch and issue left in last known state; no cleanup comment |
+| `pr-review.yml` | 30 min | Partial fixes remain on branch; no summary posted |
+| `ci-remediate.yml` | 30 min | PR left with failing CI; no remediation report |
+| `quality-sweep.yml` | 30 min | No cleanup PR created |
+| `pr-describe.yml` | 10 min | PR body left empty or minimal |
+| `dependabot-review.yml` | 15 min | No risk assessment comment posted |
+| `stale-pr-nudge.yml` | 15 min | Stale PRs not processed for this run |
+
+**Human escalation trigger**: any `PIPELINE RESULT: HALTED` comment on an issue, or any workflow job that exits non-zero after exhausting its retry budget.
+
+---
+
 ## Off-Limits Areas
 
 Do not modify these without explicit discussion:
