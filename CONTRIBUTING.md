@@ -1,22 +1,22 @@
 # Contributing to agentic-engineering-pipeline
 
 This repo eats its own cooking. Every reusable workflow published here is
-also running on this repo via "dogfood" caller workflows. That means
+also running on this repo via "local" caller workflows. That means
 contributions go through the same AI-assisted pipeline that consumers of
 this repo will experience.
 
-## How the dogfood setup works
+## How the local setup works
 
-Five thin caller workflows in `.github/workflows/dogfood-*.yml` call the
+Five thin caller workflows in `.github/workflows/local-*.yml` call the
 reusable workflows in `.github/workflows/` on this repo itself:
 
 | Caller workflow | Trigger | Reusable workflow called |
 |---|---|---|
-| `dogfood-issue-to-pr.yml` | Issue labeled `dogfood` | `issue-to-pr.yml` |
-| `dogfood-ci-remediate.yml` | Check suite fails on a PR | `ci-remediate.yml` |
-| `dogfood-pr-review.yml` | PR opened/updated against `main` | `pr-review.yml` |
-| `dogfood-pr-describe.yml` | PR opened against `main` | `pr-describe.yml` |
-| `dogfood-quality-sweep.yml` | Weekly (Mon 09:00 UTC) or manual | `quality-sweep.yml` |
+| `local-issue-to-pr.yml` | Issue labeled `local` | `issue-to-pr.yml` |
+| `local-ci-remediate.yml` | Check suite fails on a PR | `ci-remediate.yml` |
+| `local-pr-review.yml` | PR opened/updated against `main` | `pr-review.yml` |
+| `local-pr-describe.yml` | PR opened against `main` | `pr-describe.yml` |
+| `local-quality-sweep.yml` | Weekly (Mon 09:00 UTC) or manual | `quality-sweep.yml` |
 
 Each caller uses `secrets: inherit` so the single `CLAUDE_CODE_OAUTH_TOKEN`
 repo secret flows through without duplication.
@@ -38,11 +38,11 @@ pass, not a final verdict.
 
 ### Working on issues
 
-Label any issue `dogfood` to have Claude implement it autonomously:
+Label any issue `local` to have Claude implement it autonomously:
 
 1. Assign yourself or leave unassigned.
-2. Apply the `dogfood` label.
-3. `dogfood-issue-to-pr.yml` triggers, runs the full issue-to-PR pipeline,
+2. Apply the `local` label.
+3. `local-issue-to-pr.yml` triggers, runs the full issue-to-PR pipeline,
    and opens a PR with a comment on the issue linking back.
 
 Use this for clearly-scoped tasks (bug fixes, small features, docs). For
@@ -50,7 +50,7 @@ large architectural changes, open a PR directly.
 
 ### When CI fails on your PR
 
-`dogfood-ci-remediate.yml` triggers automatically on any failing check suite
+`local-ci-remediate.yml` triggers automatically on any failing check suite
 attached to a PR. Claude diagnoses the failure, applies a minimal fix, and
 pushes a corrective commit. It will not suppress tests or skip hooks.
 
@@ -65,7 +65,7 @@ PR for review. You can also trigger it manually from the Actions tab.
 
 ## Required secret
 
-All dogfood workflows require one repo secret:
+All local workflows require one repo secret:
 
 ```
 CLAUDE_CODE_OAUTH_TOKEN
@@ -82,32 +82,33 @@ declared inside each reusable workflow.
 
 ## Modifying reusable workflows
 
-The reusable workflows are the source of truth. The dogfood callers are
+The reusable workflows are the source of truth. The local callers are
 intentionally thin (trigger + `uses:` + `secrets: inherit`). When you
 change a reusable workflow's `inputs:` or `secrets:`, update the matching
-dogfood caller if any required inputs change.
+local caller if any required inputs change.
 
-To test a reusable workflow change end-to-end on this repo, the dogfood
+To test a reusable workflow change end-to-end on this repo, the local
 triggers are live once merged to `main`. For pre-merge testing, use
-`workflow_dispatch` on the dogfood caller or open a draft PR.
+`workflow_dispatch` on the local caller or open a draft PR.
 
 ## Repo structure
 
 ```
 .github/
   workflows/
-    issue-to-pr.yml          # reusable: issue -> PR
-    ci-remediate.yml         # reusable: diagnose + fix failing CI
-    pr-review.yml            # reusable: AI-assisted PR review
-    pr-describe.yml          # reusable: auto-generate PR descriptions
-    quality-sweep.yml        # reusable: periodic code hygiene
-    dependabot-review.yml    # reusable: triage Dependabot PRs
-    stale-pr-nudge.yml       # reusable: nudge stale PRs
-    dogfood-issue-to-pr.yml  # caller (this repo)
-    dogfood-ci-remediate.yml # caller (this repo)
-    dogfood-pr-review.yml    # caller (this repo)
-    dogfood-pr-describe.yml  # caller (this repo)
-    dogfood-quality-sweep.yml# caller (this repo)
+    issue-to-pr.yml                    # reusable: issue -> PR
+    ci-remediate.yml                   # reusable: diagnose + fix failing CI
+    pr-review.yml                      # reusable: AI-assisted PR review
+    pr-describe.yml                    # reusable: auto-generate PR descriptions
+    quality-sweep.yml                  # reusable: periodic code hygiene
+    dependabot-review.yml              # reusable: triage Dependabot PRs
+    stale-pr-nudge.yml                 # reusable: nudge stale PRs
+    repository-dispatch-linear.yml     # reusable: Linear webhook bridge -> issue-to-PR
+    local-issue-to-pr.yml              # caller (this repo)
+    local-ci-remediate.yml             # caller (this repo)
+    local-pr-review.yml                # caller (this repo)
+    local-pr-describe.yml              # caller (this repo)
+    local-quality-sweep.yml            # caller (this repo)
 scaffold/
   bootstrap.sh               # one-liner to add these workflows to any repo
 ```
