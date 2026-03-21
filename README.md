@@ -81,6 +81,33 @@ project-specific agent definition exists (e.g., `.claude/agents/ci-remediate.md`
 it overrides the generic behavior in the reusable workflow prompt. This lets you
 customize behavior per-repo without forking the shared workflows.
 
+## Self-Improvement Loop
+
+This repo uses its own workflows to improve itself. The intended cycle:
+
+1. **Open a GitHub issue** describing the change (bug, doc update, new workflow, etc.).
+2. **Trigger the agent** — either add the `local` label to the issue, or dispatch the Linear workflow:
+   ```bash
+   gh issue edit <number> --add-label local
+   ```
+3. **Agent implements and opens a PR** — the `local-issue-to-pr` workflow runs, creates a branch, implements the change, and opens a PR.
+4. **`pr-review` runs automatically** — on PR open, the `local-pr-review` workflow fires and Claude reviews the diff for correctness, conventions, and test coverage.
+5. **Human approves and merges** — a maintainer reads the review summary, verifies the change looks right, and merges.
+
+### Parallel dispatch
+
+To dispatch multiple agents in parallel — for example, to implement several queued issues at once — label all of them in one shot:
+
+```bash
+# Dispatch 4 agents in parallel for issues 16, 17, 18, 19
+for issue in 16 17 18 19; do
+  gh issue edit "$issue" --add-label local &
+done
+wait
+```
+
+Each issue gets its own workflow run (concurrency is keyed on issue number), so all four agents implement their respective issues simultaneously. PRs land independently and are reviewed as they arrive.
+
 ## Customization
 
 ### Per-repo agent overrides
