@@ -1,0 +1,176 @@
+# Reusable workflow: Linear repository_dispatch bridge
+# Triggered by a repository_dispatch event fired by the Linear webhook server
+# when an issue moves to the configured trigger status (default: "In Progress",
+# override with LINEAR_TRIGGER_STATUS env var on the webhook server).
+#
+# Usage in consuming repo:
+#   uses: <org>/agentic-ci/.github/workflows/repository-dispatch-linear.yml@main
+#
+name: "Agentic: Linear repository_dispatch bridge"
+
+on:
+  workflow_call:
+    inputs:
+      issue_id:
+        description: "Linear issue ID from the repository_dispatch payload"
+        type: string
+        required: true
+      issue_title:
+        description: "Linear issue title from the repository_dispatch payload"
+        type: string
+        required: true
+      trigger_status:
+        description: "The Linear status that triggered this run (informational)"
+        type: string
+        default: ""
+      ref:
+        description: "Git ref to check out and push changes to"
+        type: string
+        default: "main"
+      model:
+        description: "Claude model to use"
+        type: string
+        default: "sonnet"
+      max_verify_attempts:
+        description: "Max verification fix cycles"
+        type: number
+        default: 3
+      claude_args:
+        description: "Additional CLI args passed to claude-code-action"
+        type: string
+        default: "--dangerously-skip-permissions"
+      mcp_config:
+        description: "JSON MCP server config (e.g. for Linear MCP)"
+        type: string
+        default: ""
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+jobs:
+  implement:
+    name: Implement Linear Issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+
+      - name: Run Claude Issue-to-PR Pipeline (Linear)
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          additional_permissions: |
+            actions: read
+          claude_args: ${{ inputs.claude_args }}
+          mcp_config: ${{ inputs.mcp_config }}
+          prompt: |
+            You are an autonomous implementation agent. A Linear issue has moved to
+            the "${{ inputs.trigger_status || 'configured trigger' }}" status, which means
+            it is ready for automated implementation.
+
+            Linear issue ID: ${{ inputs.issue_id }}
+            Linear issue title: ${{ inputs.issue_title }}
+
+            ## Phase 1: Understand the issue
+
+            1. Read the repo's CLAUDE.md (if it exists) for project conventions.
+
+            2. If an MCP config was provided, use the Linear MCP server to fetch
+               the full issue details (description, acceptance criteria, attachments).
+               Otherwise, use the issue title as your primary input.
+
+            3. Check for project-specific agent definitions:
+               - If `.claude/agents/coder.md` exists, read it for implementation guidance.
+               - If `.claude/agents/ship-pipeline.md` exists, read it for shipping guidance.
+
+            ## Phase 2: Plan
+
+            4. Create a feature branch:
+               ```bash
+               SLUG=$(echo "${{ inputs.issue_title }}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | head -c 40)
+               BRANCH="linear-${{ inputs.issue_id }}-${SLUG}"
+               git checkout -b "$BRANCH"
+               ```
+
+            5. Analyze the codebase to understand what needs to change:
+               - Which files/modules are relevant?
+               - Are there existing tests for the affected area?
+               - Are there architecture decision records (adr/) to respect?
+
+            6. Build an implementation plan:
+               - Files to create or modify
+               - Tests to write
+               - Any config or schema changes
+
+            ## Phase 3: Implement
+
+            7. Write the implementation following project conventions.
+
+            8. Write tests for new code paths.
+
+            9. Verify the implementation:
+               - If Makefile with `check` target: `make check`
+               - Else if pyproject.toml: `ruff check . && ruff format --check . && pytest`
+               - Else if package.json: `npm test`
+
+               If verification fails, fix and retry (up to ${{ inputs.max_verify_attempts }} attempts).
+               If still failing after retries, post a GitHub issue comment explaining
+               what went wrong and stop.
+
+            ## Phase 4: Ship
+
+            10. Create bisectable commits:
+                - Group changes logically
+                - Use conventional commit messages (feat/fix/chore/refactor/test/docs)
+                - Each commit must be independently valid
+
+            11. Push and create PR:
+                ```bash
+                git push -u origin "$BRANCH"
+                gh pr create \
+                  --title "<type>: <summary from issue>" \
+                  --body "## Summary
+
+                <bullet points of what changed and why>
+
+                **Linear issue:** ${{ inputs.issue_id }} — ${{ inputs.issue_title }}
+
+                ## Quality Gates
+                - [x] All tests pass
+                - [x] Linting clean
+
+                ## Test plan
+                - [x] New tests added for changed code paths
+                - [x] Existing tests still pass
+
+                ---
+                *Implemented autonomously by Claude via agentic-ci (Linear webhook bridge).*"
+                ```
+
+            ## Agent override
+
+            If the repo contains `.claude/agents/repository-dispatch-linear.md`, read it
+            and follow its project-specific instructions. Those instructions take
+            precedence over the generic steps above for any conflicts.
+
+            If the repo contains `.claude/agents/coder.md`, follow its coding standards
+            instead of generic conventions.
+
+            ## Rules
+            - Never force push.
+            - Never skip quality gates.
+            - If the issue description is ambiguous, implement the most conservative
+              interpretation and note assumptions in the PR body.
+            - If implementation would require more than 500 lines of changes, break it
+              into a smaller first PR and note what remains in a comment.
