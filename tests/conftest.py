@@ -32,3 +32,38 @@ def load_workflow(name: str) -> dict:
     path = WORKFLOWS_DIR / f"{name}.yml"
     with open(path) as f:
         return yaml.safe_load(f)
+
+
+def get_on(workflow: dict) -> dict:
+    """Return the 'on' block of a workflow.
+
+    PyYAML parses the bare YAML key ``on`` as the boolean ``True``.
+    Fall back to the string key for any tooling that pre-processes the YAML.
+    """
+    return workflow.get(True, workflow.get("on", {}))
+
+
+def find_prompt(workflow: dict) -> str:
+    """Return the first ``prompt`` value found in any step's ``with`` block."""
+    for job in workflow.get("jobs", {}).values():
+        for step in job.get("steps", []) or []:
+            if isinstance(step, dict) and isinstance(step.get("with"), dict):
+                prompt = step["with"].get("prompt", "")
+                if prompt:
+                    return str(prompt)
+    return ""
+
+
+@pytest.fixture
+def reusable_workflow_paths() -> list[Path]:
+    return [WORKFLOWS_DIR / f"{name}.yml" for name in REUSABLE_WORKFLOW_NAMES]
+
+
+@pytest.fixture
+def dogfood_workflow_paths() -> list[Path]:
+    return [WORKFLOWS_DIR / f"{name}.yml" for name in DOGFOOD_WORKFLOW_NAMES]
+
+
+@pytest.fixture
+def agent_definition_paths() -> list[Path]:
+    return sorted(AGENTS_DIR.glob("*.md"))
