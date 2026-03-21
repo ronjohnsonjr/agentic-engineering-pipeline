@@ -1,1 +1,8 @@
 claude-init-output.log
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.pytest_cache/
