@@ -1,0 +1,18 @@
+# Dogfood: Quality Sweep
+# Calls the reusable quality-sweep workflow on a weekly schedule and on
+# manual dispatch. Keeps this repo's own code clean.
+#
+# Required repo secret: ANTHROPIC_API_KEY
+#
+name: "Dogfood: Quality Sweep"
+
+on:
+  schedule:
+    # Every Monday at 09:00 UTC
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  quality-sweep:
+    uses: ./.github/workflows/quality-sweep.yml
+    secrets: inherit

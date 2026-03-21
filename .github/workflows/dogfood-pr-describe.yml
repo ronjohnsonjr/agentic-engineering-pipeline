@@ -1,0 +1,17 @@
+# Dogfood: PR Description
+# Calls the reusable pr-describe workflow to auto-generate PR descriptions
+# when a PR targeting main is opened with a minimal or empty body.
+#
+# Required repo secret: ANTHROPIC_API_KEY
+#
+name: "Dogfood: PR Describe"
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened]
+
+jobs:
+  pr-describe:
+    uses: ./.github/workflows/pr-describe.yml
+    secrets: inherit
