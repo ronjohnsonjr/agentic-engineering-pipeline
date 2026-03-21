@@ -1,10 +1,10 @@
-# Dogfood: Issue to PR
+# Local: Issue to PR
 # Calls the reusable issue-to-pr workflow on this repo itself.
-# Trigger: label "dogfood" added to any issue.
+# Trigger: label "local" added to any issue.
 #
 # Required repo secret: ANTHROPIC_API_KEY
 #
-name: "Dogfood: Issue to PR"
+name: "Local: Issue to PR"
 
 on:
   issues:
@@ -23,6 +23,6 @@ concurrency:
 
 jobs:
   issue-to-pr:
-    if: github.event.label.name == 'dogfood'
+    if: github.event.label.name == 'local'
     uses: ./.github/workflows/issue-to-pr.yml
     secrets: inherit
