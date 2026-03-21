@@ -29,7 +29,7 @@ File: `.github/workflows/<name>.yml`
 Requirements:
 - `on: workflow_call` with explicit `inputs:` and `secrets:` blocks
 - Required inputs: `model` (default `"claude-sonnet-4-6"`), `claude_args` (default `""`)
-- Required secret: `ANTHROPIC_API_KEY`
+- Required secret: `CLAUDE_CODE_OAUTH_TOKEN`
 - `timeout-minutes: 30` on the job
 - Comment block at the top: workflow name, one-line description, usage example
 - Uses `actions/checkout@v4` with `fetch-depth: 0`
@@ -46,7 +46,7 @@ Requirements:
 - Thin caller: triggers, concurrency group, single job that calls the reusable workflow via `uses:`
 - Concurrency group pattern: `agentic-<name>-${{ github.ref }}`
 - Commented-out `with:` lines showing common customizations
-- Comment at top noting `ANTHROPIC_API_KEY` requirement and optional agent override file path
+- Comment at top noting `CLAUDE_CODE_OAUTH_TOKEN` requirement and optional agent override file path
 
 ### Step 4 — Create the test file
 
@@ -54,7 +54,7 @@ File: `tests/test_<name>.py`
 
 Requirements:
 - Validate prompt structure (required `##` sections are present)
-- Validate required inputs exist in the workflow YAML (`model`, `claude_args`, `ANTHROPIC_API_KEY`)
+- Validate required inputs exist in the workflow YAML (`model`, `claude_args`, `CLAUDE_CODE_OAUTH_TOKEN`)
 - Validate any shell logic in non-Claude steps
 - Follow the pattern of existing test files in `tests/`
 
