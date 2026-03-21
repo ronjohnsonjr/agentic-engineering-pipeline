@@ -1,0 +1,25 @@
+{
+  "allowedTools": [
+    "Read",
+    "Write",
+    "Edit",
+    "Bash",
+    "Glob",
+    "Grep",
+    "Agent",
+    "WebSearch",
+    "WebFetch",
+    "mcp__claude_ai_Linear__get_issue",
+    "mcp__claude_ai_Linear__list_issues",
+    "mcp__claude_ai_Linear__save_issue",
+    "mcp__claude_ai_Linear__save_comment",
+    "mcp__claude_ai_Linear__list_comments",
+    "mcp__claude_ai_Linear__get_project",
+    "mcp__claude_ai_Linear__list_projects"
+  ],
+  "model": "claude-sonnet-4-6",
+  "projectContext": [
+    "CLAUDE.md",
+    "AGENTS.md"
+  ]
+}
