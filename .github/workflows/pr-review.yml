@@ -28,8 +28,6 @@ on:
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
-      SECRETS_ADMIN_PAT:
-        required: false
 
 permissions:
   contents: write

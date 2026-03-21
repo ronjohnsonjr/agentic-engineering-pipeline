@@ -3,7 +3,6 @@
 # Trigger: label "local" added to any issue.
 #
 # Required repo secret: CLAUDE_CODE_OAUTH_TOKEN
-# Optional repo secret: SECRETS_ADMIN_PAT (for OAuth token auto-refresh)
 #
 name: "Local: Issue to PR"
 

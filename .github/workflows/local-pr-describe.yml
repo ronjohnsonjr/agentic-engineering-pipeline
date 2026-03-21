@@ -3,7 +3,6 @@
 # when a PR targeting main is opened with a minimal or empty body.
 #
 # Required repo secret: CLAUDE_CODE_OAUTH_TOKEN
-# Optional repo secret: SECRETS_ADMIN_PAT (for OAuth token auto-refresh)
 #
 name: "Local: PR Describe"
 

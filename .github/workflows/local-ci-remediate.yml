@@ -3,7 +3,6 @@
 # on a PR in this repo.
 #
 # Required repo secret: CLAUDE_CODE_OAUTH_TOKEN
-# Optional repo secret: SECRETS_ADMIN_PAT (for OAuth token auto-refresh)
 #
 name: "Local: CI Remediate"
 
@@ -40,8 +39,8 @@ jobs:
           PR_COUNT=$(echo "$PULL_REQUESTS" | jq 'length')
           if [ "$PR_COUNT" -gt 0 ]; then
             echo "has_pr=true"                                          >> "$GITHUB_OUTPUT"
-            echo "pr_number=$(echo "$PULL_REQUESTS" | jq -r '.[0].number')}}" >> "$GITHUB_OUTPUT"
-            echo "pr_branch=$(echo "$PULL_REQUESTS" | jq -r '.[0].head.ref')}}" >> "$GITHUB_OUTPUT"
+            echo "pr_number=$(echo "$PULL_REQUESTS" | jq -r '.[0].number')" >> "$GITHUB_OUTPUT"
+            echo "pr_branch=$(echo "$PULL_REQUESTS" | jq -r '.[0].head.ref')" >> "$GITHUB_OUTPUT"
           else
             echo "has_pr=false" >> "$GITHUB_OUTPUT"
           fi

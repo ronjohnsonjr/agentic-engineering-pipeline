@@ -37,9 +37,9 @@ stubs in `.claude/agents/`.
 1. Copy the consumer workflows you want from `examples/consumer-workflows/`
    into your repo's `.github/workflows/`.
 
-2. Set `ANTHROPIC_API_KEY` as a repository or organization secret:
+2. Set `CLAUDE_CODE_OAUTH_TOKEN` as a repository or organization secret:
    ```bash
-   gh secret set ANTHROPIC_API_KEY
+   gh secret set CLAUDE_CODE_OAUTH_TOKEN
    ```
 
 3. Update the `uses:` references in each workflow if your org name differs
@@ -104,7 +104,7 @@ jobs:
   review:
     uses: onyx-point/agentic-ci/.github/workflows/pr-review.yml@main
     secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     with:
       model: sonnet                  # Claude model (haiku, sonnet, opus)
       max_copilot_wait_minutes: 15   # How long to wait for Copilot
@@ -152,13 +152,13 @@ wait and reviews the PR directly.
 
 | Secret | Required | Used by |
 |--------|----------|---------|
-| `ANTHROPIC_API_KEY` | Yes | All workflows |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Yes | All workflows |
 | `LINEAR_API_KEY` | No | issue-to-pr (if using Linear MCP) |
 
 Set at the org level to avoid per-repo configuration:
 
 ```bash
-gh secret set ANTHROPIC_API_KEY --org onyx-point --visibility all
+gh secret set CLAUDE_CODE_OAUTH_TOKEN --org onyx-point --visibility all
 ```
 
 ## Cost Considerations

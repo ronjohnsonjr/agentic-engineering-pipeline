@@ -3,7 +3,6 @@
 # manual dispatch. Keeps this repo's own code clean.
 #
 # Required repo secret: CLAUDE_CODE_OAUTH_TOKEN
-# Optional repo secret: SECRETS_ADMIN_PAT (for OAuth token auto-refresh)
 #
 name: "Local: Quality Sweep"
 

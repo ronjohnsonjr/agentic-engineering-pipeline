@@ -87,7 +87,7 @@ This naming distinction makes it immediately clear, in any repo's `.github/workf
 1. **Create the reusable workflow** in `.github/workflows/<name>.yml`.
    - Use `on: workflow_call` with explicit `inputs:` and `secrets:` blocks.
    - Always include a `model` input (default: `"sonnet"`) and a `claude_args` input (default: `""`).
-   - Always require `ANTHROPIC_API_KEY` as a secret.
+   - Always require `CLAUDE_CODE_OAUTH_TOKEN` as a secret.
    - Set `timeout-minutes` on the job (30 minutes is a reasonable default).
    - Include a concise comment block at the top with the workflow name, one-line description, and usage example.
    - End the Claude prompt with an `## Agent override` section pointing to a `.claude/agents/<name>.md` file in the consumer repo, so projects can customize behavior without forking.
@@ -96,7 +96,7 @@ This naming distinction makes it immediately clear, in any repo's `.github/workf
    - File must use the `agentic-` prefix.
    - Keep it thin: define triggers, a `concurrency` group, and a single job that calls the reusable workflow.
    - Include commented-out `with:` lines showing common customizations.
-   - Add prerequisite comments at the top referencing `ANTHROPIC_API_KEY` and any optional agent override file.
+   - Add prerequisite comments at the top referencing `CLAUDE_CODE_OAUTH_TOKEN` and any optional agent override file.
 
 3. **Add the workflow to `scaffold/bootstrap.sh`**.
    - Append `"agentic-<name>.yml"` to the `WORKFLOWS` array so new repos bootstrapped with the script get the workflow automatically.
@@ -196,13 +196,13 @@ jest
 
 | Secret | Required | Used by |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | All workflows |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Yes | All workflows |
 | `LINEAR_API_KEY` | No | `issue-to-pr` (if using Linear MCP) |
 
 Set at the org level to avoid per-repo configuration:
 
 ```bash
-gh secret set ANTHROPIC_API_KEY --org <your-org> --visibility all
+gh secret set CLAUDE_CODE_OAUTH_TOKEN --org <your-org> --visibility all
 ```
 
 ---

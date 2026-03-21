@@ -2,7 +2,7 @@
 # When a PR is opened with an empty body, Claude fills it in from the diff.
 #
 # Prerequisites:
-#   - Set ANTHROPIC_API_KEY as a repo or org secret
+#   - Set CLAUDE_CODE_OAUTH_TOKEN as a repo or org secret
 #
 name: "Agentic: PR Describe"
 
@@ -21,7 +21,7 @@ jobs:
       !startsWith(github.actor, 'dependabot')
     uses: onyx-point/agentic-ci/.github/workflows/pr-describe.yml@main
     secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     # Uncomment to customize:
     # with:
     #   min_body_length: 100
