@@ -1,0 +1,45 @@
+# Dogfood: CI Remediation
+# Calls the reusable ci-remediate workflow whenever a check suite fails
+# on a PR in this repo.
+#
+# Required repo secret: ANTHROPIC_API_KEY
+#
+name: "Dogfood: CI Remediate"
+
+on:
+  check_suite:
+    types: [completed]
+
+jobs:
+  # Extract PR info from the check_suite event.
+  # check_suite.pull_requests is populated for same-repo PRs.
+  detect-pr:
+    if: github.event.check_suite.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    outputs:
+      has_pr: ${{ steps.extract.outputs.has_pr }}
+      pr_number: ${{ steps.extract.outputs.pr_number }}
+      pr_branch: ${{ steps.extract.outputs.pr_branch }}
+    steps:
+      - name: Extract PR details
+        id: extract
+        env:
+          PULL_REQUESTS: ${{ toJson(github.event.check_suite.pull_requests) }}
+        run: |
+          PR_COUNT=$(echo "$PULL_REQUESTS" | jq 'length')
+          if [ "$PR_COUNT" -gt 0 ]; then
+            echo "has_pr=true"                                          >> "$GITHUB_OUTPUT"
+            echo "pr_number=$(echo "$PULL_REQUESTS" | jq -r '.[0].number')" >> "$GITHUB_OUTPUT"
+            echo "pr_branch=$(echo "$PULL_REQUESTS" | jq -r '.[0].head.ref')" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pr=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  remediate:
+    needs: detect-pr
+    if: needs.detect-pr.outputs.has_pr == 'true'
+    uses: ./.github/workflows/ci-remediate.yml
+    with:
+      pr_number: ${{ needs.detect-pr.outputs.pr_number }}
+      pr_branch: ${{ needs.detect-pr.outputs.pr_branch }}
+    secrets: inherit

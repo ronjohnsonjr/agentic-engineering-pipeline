@@ -1,0 +1,18 @@
+# Dogfood: PR Review
+# Calls the reusable pr-review workflow for AI-powered code review on
+# every PR opened or updated against main in this repo.
+#
+# Required repo secret: ANTHROPIC_API_KEY
+#
+name: "Dogfood: PR Review"
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, ready_for_review]
+
+jobs:
+  pr-review:
+    if: "!github.event.pull_request.draft"
+    uses: ./.github/workflows/pr-review.yml
+    secrets: inherit
