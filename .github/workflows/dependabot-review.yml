@@ -23,8 +23,10 @@ on:
         type: string
         default: ""
     secrets:
-      ANTHROPIC_API_KEY:
+      CLAUDE_CODE_OAUTH_TOKEN:
         required: true
+      SECRETS_ADMIN_PAT:
+        required: false
 
 permissions:
   contents: read
@@ -45,7 +47,7 @@ jobs:
       - name: Run Claude Dependabot Review
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: ${{ inputs.claude_args }}
           prompt: |
             Dependabot has opened PR #${{ github.event.pull_request.number }}
@@ -78,7 +80,7 @@ jobs:
                ## Dependency Update Review
 
                | Package | From | To | Bump Type |
-               |---------|------|----|-----------|
+               |---------|------|----|-----------||
                | package-name | x.y.z | a.b.c | patch/minor/major |
 
                ### Risk Assessment

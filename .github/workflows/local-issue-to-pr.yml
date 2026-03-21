@@ -2,7 +2,8 @@
 # Calls the reusable issue-to-pr workflow on this repo itself.
 # Trigger: label "local" added to any issue.
 #
-# Required repo secret: ANTHROPIC_API_KEY
+# Required repo secret: CLAUDE_CODE_OAUTH_TOKEN
+# Optional repo secret: SECRETS_ADMIN_PAT (for OAuth token auto-refresh)
 #
 name: "Local: Issue to PR"
 
