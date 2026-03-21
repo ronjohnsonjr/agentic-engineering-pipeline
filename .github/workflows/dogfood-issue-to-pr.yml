@@ -1,0 +1,17 @@
+# Dogfood: Issue to PR
+# Calls the reusable issue-to-pr workflow on this repo itself.
+# Trigger: label "dogfood" added to any issue.
+#
+# Required repo secret: ANTHROPIC_API_KEY
+#
+name: "Dogfood: Issue to PR"
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  issue-to-pr:
+    if: github.event.label.name == 'dogfood'
+    uses: ./.github/workflows/issue-to-pr.yml
+    secrets: inherit
