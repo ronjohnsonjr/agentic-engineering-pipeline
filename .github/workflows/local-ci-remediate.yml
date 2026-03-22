@@ -24,7 +24,12 @@ concurrency:
 
 jobs:
   detect-pr:
-    if: github.event.check_suite.conclusion == 'failure'
+    # Only act on failures, and only on non-default branches (PRs, not pushes to main).
+    # Filtering head_branch != 'main' avoids noise from direct pushes to the default branch,
+    # which can never have an associated open PR in the standard fork-free flow.
+    if: |
+      github.event.check_suite.conclusion == 'failure' &&
+      github.event.check_suite.head_branch != 'main'
     runs-on: ubuntu-latest
     outputs:
       has_pr: ${{ steps.extract.outputs.has_pr }}
