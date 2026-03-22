@@ -75,7 +75,8 @@ def test_clarifier_brief_confidence_score_out_of_range_low():
 
 
 def test_clarifier_brief_confidence_score_boundary_pass_threshold():
-    # 0.85 is the minimum score for a CLEAR verdict
+    # 0.85 is the agent-level pass threshold (see agent prompt); the Pydantic model
+    # only validates the 0.0–1.0 range, not verdict/score consistency
     brief = ClarifierBrief(verdict="CLEAR", confidence_score=0.85)
     assert brief.confidence_score == 0.85
 
