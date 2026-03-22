@@ -156,5 +156,10 @@ async def validate_review_gate(
             )
         else:
             errors = list(verdict.blocking) if verdict.blocking else None
-            await reporter.report_milestone("review", status, errors=errors)
+            await reporter.report_milestone(
+                "review",
+                status,
+                summary=f"Changes required at review cycle {cycle}",
+                errors=errors,
+            )
     return passed

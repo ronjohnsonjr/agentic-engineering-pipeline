@@ -35,8 +35,10 @@ The milestones and their corresponding Linear state transitions are:
 6. **Remediation complete** — move to "In Progress", post comment summarising
    the fix.
 7. **Review approved** — move to "Done", post comment with PR URL and summary.
-8. **Any failure** — move to "Blocked", post diagnostic comment containing the
-   stage name, error output, and attempt count.
+8. **Unrecoverable failure** (e.g. pipeline halted, budget exhausted) — move to
+   "Blocked", post diagnostic comment containing the stage name, error output,
+   and attempt count. Note: recoverable failures (test, implement, review) move
+   to "In Progress", not "Blocked" — see items 4 and 6 above.
 
 All status updates must happen within 10 seconds of the milestone event.
 

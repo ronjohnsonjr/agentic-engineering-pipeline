@@ -1,4 +1,3 @@
-import pytest
 
 from src.integrations.linear.mapper import (
     PipelineResult,

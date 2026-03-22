@@ -2,10 +2,8 @@
 
 import os
 import subprocess
-import tempfile
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
 BOOTSTRAP_SCRIPT = REPO_ROOT / "scaffold" / "bootstrap.sh"
