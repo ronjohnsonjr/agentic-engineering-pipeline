@@ -71,119 +71,179 @@ jobs:
           claude_args: ${{ inputs.claude_args }}
           prompt: |
             You are running an automated PR review workflow on PR #${{ inputs.pr_number || github.event.pull_request.number }}.
+            Do NOT exit until every step below is complete, including the final summary comment.
 
-            ## Your task
-
-            Orchestrate a full collaborative code review cycle. Do NOT exit until all steps
-            are complete, including Copilot's review and your remediation of every comment.
-
-            ### Step 1 — Request Copilot as a reviewer
+            ## Step 1 — Request Copilot as a reviewer
 
             Check whether Copilot has already been requested or has already reviewed:
-            ```
+            ```bash
             gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/requested_reviewers
             gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/reviews
             ```
-            If Copilot is not already a requested reviewer and has not yet reviewed, request it:
-            ```
+            If Copilot has not been requested and has not already reviewed, request it:
+            ```bash
             gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/requested_reviewers \
               -X POST -f 'reviewers[]=Copilot'
             ```
-            If that fails (Copilot may be a GitHub App, not a user), try:
-            ```
+            If that fails (Copilot may be a GitHub App), try:
+            ```bash
             gh pr edit ${{ inputs.pr_number || github.event.pull_request.number }} --add-reviewer "Copilot"
             ```
-            If both fail, note it and continue — Copilot may already be auto-triggered.
+            If both fail, note it and continue — Copilot may be auto-triggered.
 
-            ### Step 2 — Perform Claude's independent review
+            ## Step 2 — Wait for Copilot's "Reviewed changes" overview
+
+            Poll every 20 seconds, up to ${{ inputs.max_copilot_wait_minutes }} minutes.
+            On each poll, fetch all reviews:
+            ```bash
+            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/reviews
+            ```
+            You are waiting for a review whose `user.login` matches one of:
+            `copilot`, `github-copilot[bot]`, `copilot-pull-request-reviewer[bot]`,
+            `github-code-quality`
+            AND whose `body` contains the text "Reviewed changes".
+
+            Do NOT proceed to Step 3 until this exact condition is met OR the wait window
+            expires. If the window expires without seeing "Reviewed changes", note the
+            timeout and proceed with only your own review in Step 3.
+
+            ## Step 3 — Perform Claude's independent review
 
             Read the PR diff and all changed files:
-            ```
+            ```bash
             gh pr diff ${{ inputs.pr_number || github.event.pull_request.number }}
             ```
-            Conduct your own thorough code review. For each issue you find, post an inline
-            review comment using the GitHub API. At the end, submit your review as COMMENT
-            (not APPROVE or REQUEST_CHANGES — that is reserved for the summary step).
+            Conduct a thorough code review. For each issue found, post an inline review
+            comment. Submit your review as COMMENT (never APPROVE or REQUEST_CHANGES).
 
-            ### Step 3 — Wait for Copilot's review
+            ## Step 4 — Catalog all review threads with thread IDs
 
-            Poll every 20 seconds, up to ${{ inputs.max_copilot_wait_minutes }} minutes, until
-            a review from copilot, github-copilot[bot], copilot-pull-request-reviewer[bot],
-            or github-code-quality appears:
+            Fetch all review threads via GraphQL so you have the thread IDs needed to
+            resolve them after addressing each one:
+            ```bash
+            OWNER=$(echo "${{ github.repository }}" | cut -d/ -f1)
+            REPO=$(echo "${{ github.repository }}" | cut -d/ -f2)
+            PR_NUM=${{ inputs.pr_number || github.event.pull_request.number }}
+            gh api graphql -f query="
+              query {
+                repository(owner: \"$OWNER\", name: \"$REPO\") {
+                  pullRequest(number: $PR_NUM) {
+                    reviewThreads(first: 100) {
+                      nodes {
+                        id
+                        isResolved
+                        comments(first: 10) {
+                          nodes {
+                            author { login }
+                            body
+                            path
+                            line
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            "
             ```
-            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/reviews
-            ```
-            If Copilot does not respond within the wait window, proceed with only your own comments.
+            Build a catalog of all unresolved threads: thread ID, first-comment author,
+            file path, line, and comment body. Prioritize threads from Copilot (any of the
+            bot logins above), then threads from other reviewers.
 
-            ### Step 4 — Catalog ALL review comments
+            ## Step 5 — Address and resolve every Copilot thread
 
-            Collect every inline comment and review summary on the PR:
-            ```
-            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/comments
-            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/reviews
-            ```
-            Include comments from Copilot, yourself, and any other reviewers. Skip any comment
-            you have already replied to in a previous round.
+            Process every unresolved thread whose first comment is from Copilot.
+            For EACH thread, do all three sub-steps:
 
-            ### Step 5 — Remediate every comment
+            **5a. Choose an action:**
 
-            For EACH unaddressed comment, take exactly one action:
+            FIX — the comment identifies a legitimate issue:
+            - Apply the minimal code change.
+            - Reply on the thread: "Fixed: [one sentence describing what changed]."
 
-            FIX — if the comment identifies a legitimate issue:
-            - Make the minimal code change needed
-            - Reply on the thread: "Resolved: [what changed and why]."
+            ACKNOWLEDGE — valid observation but no code change needed:
+            - Reply: "Acknowledged: [explanation]."
 
-            ACKNOWLEDGE — if valid but no code change is needed:
-            - Reply: "Acknowledged: [explanation]. No change made."
-
-            DECLINE — if the suggestion is incorrect or would degrade quality:
+            DECLINE — incorrect suggestion or would degrade quality:
             - Reply: "Declined: [reasoning]."
 
-            ### Step 6 — Run quality checks
+            **5b. Reply on the thread** using the REST API:
+            ```bash
+            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/comments/<COMMENT_ID>/replies \
+              -X POST -f body="<your reply>"
+            ```
+
+            **5c. Resolve the thread** using GraphQL immediately after replying:
+            ```bash
+            gh api graphql -f query="
+              mutation {
+                resolveReviewThread(input: { threadId: \"<THREAD_ID>\" }) {
+                  thread { isResolved }
+                }
+              }
+            "
+            ```
+
+            Do not move to Step 6 until every Copilot thread has been replied to and resolved.
+
+            ## Step 6 — Address and resolve your own threads
+
+            Repeat Step 5 for any unresolved threads from your own review (Step 3).
+            Same FIX / ACKNOWLEDGE / DECLINE logic. Reply then resolve each thread.
+
+            ## Step 7 — Run quality checks
 
             After all fixes:
-            - If a Makefile has a `check` target: `make check`
-            - Else if pyproject.toml exists: `ruff check . && pytest`
-            - Else if package.json exists: `npm test`
-            - Otherwise: skip and note "no quality gate found"
+            - Makefile with `check` target: `make check`
+            - Else pyproject.toml: `ruff check . && pytest`
+            - Else package.json: `npm test`
+            - Otherwise: note "no quality gate found"
 
-            If quality checks fail after a fix, revert that fix and re-classify as DECLINE.
+            If a quality check fails after a fix, revert that fix, re-reply on the thread:
+            "Reverted: quality gate failed — [first 10 lines of gate output].", then
+            re-resolve the thread.
 
-            ### Step 7 — Commit and push
+            ## Step 8 — Commit and push
 
-            Batch related fixes into logical commits with conventional commit messages.
+            Batch fixes into logical commits with conventional commit messages.
             Push to the PR branch.
 
-            ### Step 8 — Iterate (up to ${{ inputs.max_review_rounds }} rounds)
+            ## Step 9 — Iterate (up to ${{ inputs.max_review_rounds }} rounds)
 
-            After pushing, wait up to ${{ inputs.max_copilot_wait_minutes }} minutes for any
-            new Copilot follow-up review. If new comments appear, repeat steps 4–7.
-            Stop early if Copilot repeats the same findings (convergence).
+            After pushing, poll up to ${{ inputs.max_copilot_wait_minutes }} minutes for a
+            new Copilot review whose body contains "Reviewed changes". If new unresolved
+            Copilot threads appear, repeat Steps 4–8. Stop if Copilot repeats identical
+            comment bodies (convergence).
 
-            ### Step 9 — Post summary
+            ## Step 10 — Post summary comment
 
-            Post a top-level PR comment:
+            Post a single top-level comment on the PR:
 
+            ```
             ## Code Review Summary
 
-            **Reviewers**: [list reviewers whose comments were processed]
-            **Total Comments Reviewed**: N
-            **Resolved (fixed)**: N | **Acknowledged**: N | **Declined**: N
+            **Reviewers processed**: [list]
+            **Total threads**: N | **Fixed**: N | **Acknowledged**: N | **Declined**: N | **Reverted**: N
 
             ### Changes Made
-            - [each fix with file:line reference]
+            - <file>:<line> — <what changed>
 
-            ### Items Acknowledged
-            - [each with rationale]
+            ### Acknowledged
+            - <comment summary> — <rationale>
 
-            ### Items Declined
-            - [each with rationale]
+            ### Declined
+            - <comment summary> — <rationale>
+
+            ### Quality Gate
+            [PASS | FAIL | not found]
 
             ### Commits
-            - [SHAs and messages]
+            - <sha> <message>
 
             ---
             *Review orchestrated by Claude via agentic-ci.*
+            ```
 
             ## Agent override
 
@@ -192,8 +252,12 @@ jobs:
             precedence over the generic steps above for any conflicts.
 
             ## Rules
-            - Always reply ON the comment thread, not as a separate top-level comment.
-            - If a fix introduces test failures, revert and decline with explanation.
-            - Respect any project conventions from CLAUDE.md if present.
+            - Do NOT exit until Step 10 is complete.
+            - Do NOT advance past Step 2 until a Copilot review body containing
+              "Reviewed changes" is observed, or the wait window expires.
+            - Resolve every thread immediately after replying to it — never leave a
+              replied-to thread unresolved.
+            - Always reply ON the thread, never as a separate top-level comment.
+            - If a fix introduces test failures, revert it and decline with explanation.
             - Use conventional commits for all fix commits.
-            - Do NOT exit until Step 9 is complete.
+            - Respect project conventions from CLAUDE.md if present.
