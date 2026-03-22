@@ -2,6 +2,12 @@
 # Calls the reusable pr-describe workflow to auto-generate PR descriptions
 # when a PR targeting main is opened with a minimal or empty body.
 #
+# Skips bot-authored PRs: the agentic pipeline (issue-to-pr) already writes
+# a full description, so running the describe workflow on those PRs is wasted
+# work and generates noise. The job-level `if` makes the workflow conclusion
+# "skipped" (rather than "success with no-op"), which the cleanup workflow
+# can then prune.
+#
 # Required repo secret: CLAUDE_CODE_OAUTH_TOKEN
 #
 name: "Local: PR Describe"
@@ -22,5 +28,8 @@ concurrency:
 
 jobs:
   pr-describe:
+    # Skip bot-created PRs (e.g. from the issue-to-pr pipeline) — they already
+    # include a full description, so regenerating it would be redundant.
+    if: github.event.pull_request.user.type != 'Bot'
     uses: ./.github/workflows/pr-describe.yml
     secrets: inherit

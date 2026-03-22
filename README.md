@@ -211,7 +211,7 @@ Pass the Linear MCP config to give Claude full access to issue details:
 
 ```yaml
 with:
-  mcp_config: '{"mcpServers":{"Linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}'
+  mcp_config: '{"mcpServers":{"linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}'
 ```
 
 Then add a `.claude/agents/repository-dispatch-linear.md` with your project-specific
@@ -281,7 +281,7 @@ Linear issues without the webhook bridge, pass an MCP config:
 
 ```yaml
 with:
-  mcp_config: '{"mcpServers":{"Linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}'
+  mcp_config: '{"mcpServers":{"linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}'
 ```
 
 Then add a `.claude/agents/linear.md` with your project-specific status
@@ -308,6 +308,8 @@ wait and reviews the PR directly.
 | `CLAUDE_CODE_OAUTH_TOKEN` | Yes | All workflows |
 | `LINEAR_API_KEY` | No | issue-to-pr (if using Linear MCP) |
 | `JIRA_API_TOKEN` | No | jira bridge (planned — not yet implemented) |
+
+> **Slack MCP (planned):** A Slack MCP entry is not yet included in `.mcp.json`. When an official Slack MCP server is available, add it under `"slack"` following the existing pattern in `.mcp.json`.
 
 Set at the org level to avoid per-repo configuration:
 

@@ -75,88 +75,99 @@ jobs:
           claude_args: ${{ inputs.claude_args }}
           mcp_config: ${{ inputs.mcp_config }}
           prompt: |
-            You are an autonomous implementation agent. A Linear issue has moved to
-            the "${{ inputs.trigger_status || 'configured trigger' }}" status, which means
-            it is ready for automated implementation.
+            You are the root orchestrator for a Linear-triggered issue-to-PR pipeline.
+            A Linear issue has moved to the "${{ inputs.trigger_status || 'configured trigger' }}"
+            status and is ready for automated implementation.
 
             Linear issue ID: ${{ inputs.issue_id }}
             Linear issue title: ${{ inputs.issue_title }}
+            Max verify attempts: ${{ inputs.max_verify_attempts }}
 
-            ## Phase 1: Understand the issue
+            ## Step 1 — Load context
 
-            1. Read the repo's CLAUDE.md (if it exists) for project conventions.
+            1. Read `AGENTS.md` if it exists — it documents the pipeline topology,
+               stage definitions, and failure modes for this repo.
+            2. Read `CLAUDE.md` if it exists — project conventions all agents must follow.
+            3. If an MCP config was provided, use the Linear MCP server to fetch the
+               full issue details (description, acceptance criteria, attachments).
 
-            2. If an MCP config was provided, use the Linear MCP server to fetch
-               the full issue details (description, acceptance criteria, attachments).
-               Otherwise, use the issue title as your primary input.
+            ## Step 2 — Create feature branch
 
-            3. Check for project-specific agent definitions:
-               - If `.claude/agents/coder.md` exists, read it for implementation guidance.
-               - If `.claude/agents/ship-pipeline.md` exists, read it for shipping guidance.
+            ```bash
+            SLUG=$(echo "${{ inputs.issue_title }}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | cut -c1-50)
+            BRANCH="linear-${{ inputs.issue_id }}-${SLUG}"
+            git checkout -b "$BRANCH"
+            ```
 
-            ## Phase 2: Plan
+            ## Step 3 — Run pipeline stages via sub-agents
 
-            4. Create a feature branch:
-               ```bash
-               SLUG=$(echo "${{ inputs.issue_title }}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | head -c 40)
-               BRANCH="linear-${{ inputs.issue_id }}-${SLUG}"
-               git checkout -b "$BRANCH"
-               ```
+            Use the Agent tool to spawn each specialist sub-agent in an isolated context.
+            Pass the structured output of each stage as input to the next. Gate-check
+            every output before advancing.
 
-            5. Analyze the codebase to understand what needs to change:
-               - Which files/modules are relevant?
-               - Are there existing tests for the affected area?
-               - Are there architecture decision records (adr/) to respect?
+            ### Stage 1: Clarify
+            Delegate to `clarifier`. Pass the full issue text.
+            Gate: `VERDICT: CLEAR`. If `VERDICT: NEEDS CLARITY`, halt and post the
+            blocking questions as an issue comment. Do not continue until answered.
+            Skip only if the issue has explicit, numbered acceptance criteria and no
+            ambiguous scope.
 
-            6. Build an implementation plan:
-               - Files to create or modify
-               - Tests to write
-               - Any config or schema changes
+            ### Stage 2: Research
+            Delegate to `researcher`. Pass the clarifier's SUMMARY and ACCEPTANCE CRITERIA.
+            Gate: RESEARCH BRIEF must contain AFFECTED FILES, INTERFACES, EXISTING TESTS,
+            and RISKS AND CONSTRAINTS sections. Halt if any section is missing.
 
-            ## Phase 3: Implement
+            ### Stage 3: Plan
+            Delegate to `planner`. Pass the RESEARCH BRIEF and clarifier's ACCEPTANCE CRITERIA.
+            Gate: IMPLEMENTATION PLAN must contain ordered STEP entries, OUT OF SCOPE,
+            and RISKS sections. Halt if any section is missing.
 
-            7. Write the implementation following project conventions.
+            ### Stage 4: Implement
+            Delegate to `programmer`. Pass the IMPLEMENTATION PLAN and issue summary.
+            Gate: `IMPLEMENTATION RESULT: COMPLETE` and `QUALITY GATE: PASS`.
+            If `QUALITY GATE: FAIL`, delegate to `pr-remediator` then re-run `programmer`.
+            Repeat up to ${{ inputs.max_verify_attempts }} times. Halt if still failing.
+            If `IMPLEMENTATION RESULT: HALTED`, halt immediately.
 
-            8. Write tests for new code paths.
+            ### Stage 5: Test (run applicable agents)
+            - Always delegate to `unit-tester`.
+            - Delegate to `backend-tester` if API routes, DB schemas, or service
+              boundaries changed. Skip with justification if not applicable.
+            - Delegate to `frontend-tester` if frontend routes, components, or user
+              flows changed. Skip with justification if not applicable.
+            Gate: all invoked test agents must return PASS. Halt if any returns FAIL.
+            Record skip reason for any skipped agent.
 
-            9. Verify the implementation:
-               - If Makefile with `check` target: `make check`
-               - Else if pyproject.toml: `ruff check . && ruff format --check . && pytest`
-               - Else if package.json: `npm test`
+            ### Stage 6: Review
+            Delegate to `ai-reviewer`. Pass the clarifier's ACCEPTANCE CRITERIA.
+            Gate: `REVIEW RESULT: APPROVED`.
+            If `REVIEW RESULT: CHANGES REQUIRED`, delegate to `pr-remediator` with the
+            BLOCKING ISSUES list, then re-run `ai-reviewer`. Up to 3 cycles total.
+            If not APPROVED after 3 cycles, halt and leave the PR open for human review.
 
-               If verification fails, fix and retry (up to ${{ inputs.max_verify_attempts }} attempts).
-               If still failing after retries, post a GitHub issue comment explaining
-               what went wrong and stop.
+            ### Stage 7: Linear status update (if MCP available)
+            Delegate to the `linear` agent. Pass the issue ID and stage "In Review".
+            Skip if no Linear MCP config was provided.
 
-            ## Phase 4: Ship
+            ### Stage 8: Create PR
+            Delegate to `pr-creator`. Pass the issue title, branch name, and a pipeline
+            summary (stages completed, stages skipped with reasons).
+            Gate: `PR RESULT: CREATED`. Halt and report on any pre-flight failure.
 
-            10. Create bisectable commits:
-                - Group changes logically
-                - Use conventional commit messages (feat/fix/chore/refactor/test/docs)
-                - Each commit must be independently valid
+            ## Step 4 — Report result
 
-            11. Push and create PR:
-                ```bash
-                git push -u origin "$BRANCH"
-                gh pr create \
-                  --title "<type>: <summary from issue>" \
-                  --body "## Summary
+            Output the structured pipeline result and post it as a comment on any
+            associated GitHub issue:
 
-                <bullet points of what changed and why>
-
-                **Linear issue:** ${{ inputs.issue_id }} — ${{ inputs.issue_title }}
-
-                ## Quality Gates
-                - [x] All tests pass
-                - [x] Linting clean
-
-                ## Test plan
-                - [x] New tests added for changed code paths
-                - [x] Existing tests still pass
-
-                ---
-                *Implemented autonomously by Claude via agentic-ci (Linear webhook bridge).*"
-                ```
+            ```
+            PIPELINE RESULT: [COMPLETE | HALTED]
+            ISSUE: <Linear issue ID> — <title>
+            STAGES: <comma-separated list of completed stages>
+            SKIPPED: <comma-separated list with reason, or "none">
+            PR: <url or "not created">
+            HALT STAGE: <stage name if halted, or "none">
+            HALT REASON: <description if halted, or "none">
+            ```
 
             ## Agent override
 
@@ -164,13 +175,10 @@ jobs:
             and follow its project-specific instructions. Those instructions take
             precedence over the generic steps above for any conflicts.
 
-            If the repo contains `.claude/agents/coder.md`, follow its coding standards
-            instead of generic conventions.
-
             ## Rules
             - Never force push.
             - Never skip quality gates.
-            - If the issue description is ambiguous, implement the most conservative
-              interpretation and note assumptions in the PR body.
-            - If implementation would require more than 500 lines of changes, break it
-              into a smaller first PR and note what remains in a comment.
+            - Never retry the same failing inputs more than ${{ inputs.max_verify_attempts }} times.
+            - All commits must use conventional commit messages (feat/fix/chore/refactor/test/docs).
+            - Close the PR body with:
+              `*Implemented autonomously by Claude via agentic-ci (Linear webhook bridge).*`
