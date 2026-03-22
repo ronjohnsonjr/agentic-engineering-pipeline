@@ -28,10 +28,10 @@ describe("GitHubService constructor", () => {
     expect(service._repo).toBe("project");
   });
 
-  it("handles malformed repo string with no '/' by setting _repo to undefined", () => {
-    const service = new GitHubService({ token: "tok", repo: "noslash" });
-    expect(service._owner).toBe("noslash");
-    expect(service._repo).toBeUndefined();
+  it("throws on malformed repo string with no '/'", () => {
+    expect(() => new GitHubService({ token: "tok", repo: "noslash" })).toThrow(
+      'Invalid repo format: "noslash". Expected "owner/repo".'
+    );
   });
 });
 

@@ -111,6 +111,7 @@ export class SessionManager {
 
     promise.finally(() => {
       this._active.delete(issue.id);
+      this._seen.delete(issue.id);
       this._drainQueue();
     });
 

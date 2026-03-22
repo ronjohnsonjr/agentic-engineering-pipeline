@@ -11,9 +11,12 @@ export class GitHubService {
    * @param {string} opts.repo - "owner/repo" format
    */
   constructor({ token, repo }) {
-    const [owner, repoName] = repo.split("/");
-    this._owner = owner;
-    this._repo = repoName;
+    const parts = repo.split("/");
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      throw new Error(`Invalid repo format: "${repo}". Expected "owner/repo".`);
+    }
+    this._owner = parts[0];
+    this._repo = parts[1];
     this._octokit = new Octokit({ auth: token });
   }
 

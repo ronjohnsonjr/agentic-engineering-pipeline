@@ -10,8 +10,7 @@
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.1.81",
     "@linear/sdk": "^78.0.0",
-    "@octokit/rest": "^22.0.1",
-    "node-cron": "^4.2.1"
+    "@octokit/rest": "^22.0.1"
   },
   "devDependencies": {
     "@jest/globals": "^30.3.0",
