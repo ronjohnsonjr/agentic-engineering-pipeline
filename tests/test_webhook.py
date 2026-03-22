@@ -8,7 +8,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.integrations.linear.webhook import router, GITHUB_API_URL
+from src.integrations.linear.webhook import app, router, GITHUB_API_URL
 
 
 def _make_app() -> FastAPI:
@@ -47,6 +47,14 @@ def _post_webhook(client, payload: dict, secret: str = WEBHOOK_SECRET) -> httpx.
         content=body,
         headers={"Content-Type": "application/json", "linear-signature": sig},
     )
+
+
+class TestHealthEndpoint:
+    def test_health_returns_200(self):
+        client = TestClient(app)
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
 
 
 class TestSignatureValidation:
