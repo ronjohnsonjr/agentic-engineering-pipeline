@@ -411,21 +411,20 @@ class Orchestrator:
         invoked agents must return a PASS; a single FAIL halts the pipeline.
         """
         tasks: dict[str, asyncio.Task[str]] = {}
-        loop = asyncio.get_event_loop()
 
         # Always run unit tests
-        tasks["unit-tester"] = loop.create_task(
+        tasks["unit-tester"] = asyncio.create_task(
             self._call_agent(self._unit_tester, "Run unit tests.")
         )
         if self._run_backend:
-            tasks["backend-tester"] = loop.create_task(
+            tasks["backend-tester"] = asyncio.create_task(
                 self._call_agent(self._backend_tester, "Run backend/integration tests.")
             )
         else:
             run.skip("backend-tester", "no API or database changes detected")
 
         if self._run_frontend:
-            tasks["frontend-tester"] = loop.create_task(
+            tasks["frontend-tester"] = asyncio.create_task(
                 self._call_agent(self._frontend_tester, "Run frontend/e2e tests.")
             )
         else:
