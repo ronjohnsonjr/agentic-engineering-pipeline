@@ -57,6 +57,19 @@ class TestHealthEndpoint:
         assert resp.json() == {"status": "ok"}
 
 
+class TestExportedAppWebhookRoute:
+    def test_exported_app_has_linear_webhook_route(self):
+        client = TestClient(app, raise_server_exceptions=False)
+        payload = {"type": "Issue", "action": "create", "data": {}}
+        body = json.dumps(payload).encode()
+        resp = client.post(
+            "/webhooks/linear",
+            content=body,
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 401
+
+
 class TestSignatureValidation:
     def test_valid_signature_returns_200(self, client):
         payload = {"type": "Issue", "action": "create", "data": {"id": "i1", "title": "T"}}

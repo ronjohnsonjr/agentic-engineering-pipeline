@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 app = FastAPI(title="Linear Webhook Bridge")
-app.include_router(router)
 
 
 @app.get("/health")
@@ -158,3 +157,6 @@ async def linear_webhook(
 
     background_tasks.add_task(_handle_payload, payload)
     return {"ok": True}
+
+
+app.include_router(router)
