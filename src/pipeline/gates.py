@@ -33,7 +33,13 @@ async def validate_clarifier_gate(
     passed = brief.verdict == "CLEAR"
     if reporter is not None:
         status = "success" if passed else "failure"
-        await reporter.report_milestone("clarify", status)
+        if passed:
+            await reporter.report_milestone("clarify", status)
+        else:
+            questions = getattr(brief, "questions", None) or []
+            errors = questions if questions else None
+            summary = "Clarification questions must be resolved before research can start."
+            await reporter.report_milestone("clarify", status, summary=summary, errors=errors)
     return passed
 
 
@@ -50,7 +56,16 @@ async def validate_research_gate(
     passed = bool(brief.summary.strip()) and bool(brief.relevant_files)
     if reporter is not None:
         status = "success" if passed else "failure"
-        await reporter.report_milestone("research", status)
+        if passed:
+            summary = brief.summary.strip() or f"{len(brief.relevant_files)} relevant files identified"
+            await reporter.report_milestone("research", status, summary=summary)
+        else:
+            errors: list[str] = []
+            if not brief.summary.strip():
+                errors.append("Research summary is missing or blank")
+            if not brief.relevant_files:
+                errors.append("No relevant files were identified for research")
+            await reporter.report_milestone("research", status, errors=errors)
     return passed
 
 
@@ -67,8 +82,16 @@ async def validate_plan_gate(
     passed = bool(brief.issue.strip()) and bool(brief.steps)
     if reporter is not None:
         status = "success" if passed else "failure"
-        summary = f"{len(brief.steps)} steps defined" if passed else ""
-        await reporter.report_milestone("plan", status, summary=summary)
+        if passed:
+            await reporter.report_milestone("plan", status, summary=f"{len(brief.steps)} steps defined")
+        else:
+            errors: list[str] = []
+            if not brief.issue.strip():
+                errors.append("Plan is missing an issue reference")
+            if not brief.steps:
+                errors.append("Plan contains no steps")
+            summary = "Plan validation failed: " + "; ".join(errors) if errors else "Plan validation failed"
+            await reporter.report_milestone("plan", status, summary=summary, errors=errors)
     return passed
 
 
@@ -93,7 +116,12 @@ async def validate_test_gate(
     passed = all(r.passed for r in results)
     if reporter is not None:
         if passed:
-            await reporter.report_milestone("test", "success")
+            passing = sum(1 for r in results if r.passed)
+            await reporter.report_milestone(
+                "test",
+                "success",
+                summary=f"{passing}/{len(results)} test suite(s) passed",
+            )
         else:
             errors = [f for r in results for f in r.failures]
             await reporter.report_milestone("test", "failure", errors=errors)

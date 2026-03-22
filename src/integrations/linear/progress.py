@@ -60,13 +60,13 @@ class PipelineProgressReporter:
 
         if target_state == BLOCKED_STATE:
             raw_error = "\n".join(errors) if errors else (summary or "Unknown error")
-            full_error = "\n\n".join(filter(None, [milestone_body, raw_error]))
             await self._sm.transition_to_blocked(
                 actor="orchestrator",
                 stage=stage,
-                error_output=full_error,
+                error_output=raw_error,
                 attempt_count=attempt_count,
                 from_state=None,
+                milestone_body=milestone_body,
             )
         else:
             await self._sm.transition(

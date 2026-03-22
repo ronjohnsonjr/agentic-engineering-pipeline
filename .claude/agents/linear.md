@@ -2,8 +2,8 @@
 name: linear
 description: >
   Linear issue sync agent. Posts milestone comments and transitions issue status
-  at each pipeline stage: Triage (clarify/research), In Progress (plan), In
-  Testing (test pass), In Review (PR created), Blocked (any failure), Done
+  at each pipeline stage: Triage (clarify/research), In Progress (plan),
+  In Review (test pass/PR created), Blocked (any failure), Done
   (review approved). Invoke at the start and end of the issue-to-PR workflow
   when a linear_issue_id is provided.
 model: claude-sonnet-4-6
@@ -27,8 +27,8 @@ The milestones and their corresponding Linear state transitions are:
 1. **Start of pipeline (clarify/research phase)** — move to "Triage", post
    comment indicating work has begun.
 2. **Plan complete** — move to "In Progress", post comment with step count.
-3. **Tests pass** — move to "In Testing" then "In Review", post comment with
-   coverage summary.
+3. **Tests pass** — move directly to "In Review", post comment summarising
+   test results.
 4. **Tests fail** — move to "Blocked", post diagnostic comment with stage name,
    error output, and attempt count.
 5. **PR created** — post comment with PR URL.

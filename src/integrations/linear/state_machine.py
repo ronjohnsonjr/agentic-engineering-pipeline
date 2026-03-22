@@ -145,6 +145,7 @@ class StateMachine:
         error_output: str,
         attempt_count: int = 1,
         from_state: str | None = None,
+        milestone_body: str | None = None,
     ) -> None:
         """Convenience wrapper: transition to Blocked with a diagnostic comment."""
         await self.transition(
@@ -154,6 +155,7 @@ class StateMachine:
             stage=stage,
             error_output=error_output,
             attempt_count=attempt_count,
+            milestone_body=milestone_body,
         )
 
 
@@ -173,10 +175,11 @@ def _build_transition_comment(
     ]
     if stage:
         lines.append(f"- Stage: `{stage}`")
-    if milestone_body:
-        lines.append(milestone_body)
     if to_state == BLOCKED_STATE or attempt_count > 1:
         lines.append(f"- Attempt: {attempt_count}")
+    if milestone_body:
+        lines.append("")
+        lines.append(milestone_body)
     if to_state == BLOCKED_STATE and error_output:
         safe_error = error_output.replace("```", "'''")
         lines.append("\n**Diagnostic:**")
