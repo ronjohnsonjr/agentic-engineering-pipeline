@@ -10,6 +10,12 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, ready_for_review]
+    # Exclude changes to the review workflows themselves — claude-code-action@v1
+    # validates the calling workflow against main and will always 401 when the
+    # workflow file being reviewed is the same one that changed in the PR.
+    paths-ignore:
+      - '.github/workflows/local-pr-review.yml'
+      - '.github/workflows/pr-review.yml'
   workflow_dispatch:
     inputs:
       pr_number:
@@ -24,9 +30,11 @@ permissions:
   id-token: write
   actions: read
 
+# cancel-in-progress is false because the Claude job polls for Copilot
+# internally — killing a running job aborts remediation and wastes tokens.
 concurrency:
-  group: agentic-pr-review-${{ github.ref }}
-  cancel-in-progress: true
+  group: agentic-pr-review-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   pr-review:
