@@ -1,0 +1,22 @@
+{
+  "name": "agentic-dispatcher",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --coverage"
+  },
+  "dependencies": {
+    "@linear/sdk": "^78.0.0",
+    "@octokit/rest": "^22.0.1"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.3.0",
+    "jest": "^30.3.0"
+  },
+  "jest": {
+    "testMatch": ["**/tests/**/*.test.js"],
+    "transform": {}
+  }
+}
