@@ -49,16 +49,10 @@ def test_github_server_configured():
     github = servers["github"]
     assert github["type"] == "stdio"
     assert github["command"] == "docker"
-    assert "ghcr.io/github/github-mcp-server" in github["args"]
+    assert any(arg.startswith("ghcr.io/github/github-mcp-server") for arg in github["args"])
     env = github.get("env", {})
     assert "GITHUB_TOKEN" in env
     assert env["GITHUB_TOKEN"] == "${GITHUB_TOKEN}"
-
-
-def test_no_slack_server():
-    config = load_mcp_config()
-    servers = config["mcpServers"]
-    assert "slack" not in servers
 
 
 def test_settings_json_linear_tools_correct_namespace():

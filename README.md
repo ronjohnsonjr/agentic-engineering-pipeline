@@ -211,7 +211,7 @@ Pass the Linear MCP config to give Claude full access to issue details:
 
 ```yaml
 with:
-  mcp_config: '{"mcpServers":{"Linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}'
+  mcp_config: '{"mcpServers":{"linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}'
 ```
 
 Then add a `.claude/agents/repository-dispatch-linear.md` with your project-specific
@@ -281,7 +281,7 @@ Linear issues without the webhook bridge, pass an MCP config:
 
 ```yaml
 with:
-  mcp_config: '{"mcpServers":{"Linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}'
+  mcp_config: '{"mcpServers":{"linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}'
 ```
 
 Then add a `.claude/agents/linear.md` with your project-specific status

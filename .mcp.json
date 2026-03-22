@@ -10,7 +10,7 @@
     "github": {
       "type": "stdio",
       "command": "docker",
-      "args": ["run", "-i", "--rm", "-e", "GITHUB_TOKEN", "ghcr.io/github/github-mcp-server"],
+      "args": ["run", "-i", "--rm", "-e", "GITHUB_TOKEN", "ghcr.io/github/github-mcp-server:v0.32.0"],
       "env": {
         "GITHUB_TOKEN": "${GITHUB_TOKEN}"
       }
