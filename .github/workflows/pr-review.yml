@@ -24,7 +24,7 @@ on:
       claude_args:
         description: "Additional CLI args passed to claude-code-action"
         type: string
-        default: ""
+        default: "--dangerously-skip-permissions --max-turns 40"
       pr_number:
         description: "PR number to review (required when triggered via workflow_dispatch)"
         type: number
@@ -134,6 +134,7 @@ jobs:
                         isResolved
                         comments(first: 10) {
                           nodes {
+                            databaseId
                             author { login }
                             body
                             path
@@ -147,9 +148,14 @@ jobs:
               }
             "
             ```
-            Build a catalog of all unresolved threads: thread ID, first-comment author,
-            file path, line, and comment body. Prioritize threads from Copilot (any of the
-            bot logins above), then threads from other reviewers.
+            Build a catalog of all unresolved threads. For each thread record:
+            - `id` — the GraphQL node ID (used with `resolveReviewThread`)
+            - `databaseId` of the first comment — the numeric ID used with the REST
+              reply endpoint (`/pulls/{number}/comments/{databaseId}/replies`)
+            - first-comment author login, file path, line, and body
+
+            Prioritize threads from Copilot (any of the bot logins above), then threads
+            from other reviewers.
 
             ## Step 5 — Address and resolve every Copilot thread
 
@@ -168,9 +174,10 @@ jobs:
             DECLINE — incorrect suggestion or would degrade quality:
             - Reply: "Declined: [reasoning]."
 
-            **5b. Reply on the thread** using the REST API:
+            **5b. Reply on the thread** using the REST API with the `databaseId` of
+            the first comment in the thread (the numeric integer from the GraphQL catalog):
             ```bash
-            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/comments/<COMMENT_ID>/replies \
+            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/comments/<databaseId>/replies \
               -X POST -f body="<your reply>"
             ```
 
