@@ -29,7 +29,7 @@ The milestones and their corresponding Linear state transitions are:
 2. **Plan complete** — move to "In Progress", post comment with step count.
 3. **Tests pass** — move directly to "In Review", post comment summarising
    test results.
-4. **Tests fail** — move to "Blocked", post diagnostic comment with stage name,
+4. **Tests fail** — move to "In Progress", post diagnostic comment with stage name,
    error output, and attempt count.
 5. **PR created** — post comment with PR URL.
 6. **Remediation complete** — move to "In Progress", post comment summarising
