@@ -62,7 +62,22 @@ def test_settings_json_linear_tools_correct_namespace():
     assert any(t.startswith("mcp__linear__") for t in mcp_tools)
 
 
+# Minimum required GitHub MCP tools that must be present in .claude/settings.json.
+# Use issubset so adding new tools in the future does not break this test.
+_REQUIRED_GITHUB_MCP_TOOLS = {
+    "mcp__github__create_pull_request",
+    "mcp__github__get_file_contents",
+    "mcp__github__get_pull_request",
+    "mcp__github__list_pull_requests",
+    "mcp__github__create_issue",
+    "mcp__github__list_issues",
+    "mcp__github__get_issue",
+}
+
+
 def test_settings_json_github_tools_present():
     settings = load_settings()
-    mcp_tools = [t for t in settings.get("allowedTools", []) if t.startswith("mcp__")]
-    assert any(t.startswith("mcp__github__") for t in mcp_tools)
+    github_tools = {t for t in settings.get("allowedTools", []) if t.startswith("mcp__github__")}
+    assert _REQUIRED_GITHUB_MCP_TOOLS.issubset(github_tools), (
+        f"Missing required GitHub MCP tools: {_REQUIRED_GITHUB_MCP_TOOLS - github_tools}"
+    )
