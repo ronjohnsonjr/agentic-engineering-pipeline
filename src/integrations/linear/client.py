@@ -68,7 +68,7 @@ class LinearClient:
         query = """
         query GetIssuesByState($teamId: String!, $stateName: String!) {
           team(id: $teamId) {
-            issues(filter: { state: { name: { eq: $stateName } } }) {
+            issues(filter: { state: { name: { eq: $stateName } } }, first: 100) {
               nodes {
                 id
                 identifier

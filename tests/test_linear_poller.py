@@ -1,7 +1,6 @@
 import pytest
 import respx
 import httpx
-from unittest.mock import AsyncMock, MagicMock
 
 from src.integrations.linear.client import LinearClient, LINEAR_API_URL
 from src.integrations.linear.poller import (
@@ -186,6 +185,47 @@ async def test_poll_once_skips_seen_issues():
     # Second poll: same issue should be skipped
     await poller.poll_once()
     assert call_count == 1
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_poll_once_needs_clarification_issue_can_be_requeued():
+    """Issue moved to Needs Clarification must NOT be added to _seen so it can be
+    dispatched on a later cycle once the user adds a description."""
+    client = LinearClient(api_key=MOCK_API_KEY)
+    issue_no_desc = _make_issue(description="")
+    issue_with_desc = _make_issue(description="Now has a full description.")
+
+    states = [{"id": "s-nc", "name": NEEDS_CLARIFICATION_STATUS, "type": "unstarted"}]
+
+    # First poll: issue has no description → moves to Needs Clarification
+    first_call_count = 0
+
+    def first_mock(request: httpx.Request) -> httpx.Response:
+        nonlocal first_call_count
+        first_call_count += 1
+        if first_call_count == 1:
+            return _mock_issues_response([issue_no_desc])
+        if first_call_count == 2:
+            return _mock_states_response(states)
+        return _mock_mutation_response()
+
+    dispatched: list[PollResult] = []
+
+    async def on_issue(result: PollResult) -> None:
+        dispatched.append(result)
+
+    poller = LinearPoller(client=client, team_id=TEAM_ID, on_issue=on_issue)
+
+    respx.post(LINEAR_API_URL).mock(side_effect=first_mock)
+    await poller.poll_once()
+    assert dispatched == []
+
+    # Second poll: user added description; issue must now be dispatched
+    respx.post(LINEAR_API_URL).mock(return_value=_mock_issues_response([issue_with_desc]))
+    await poller.poll_once()
+    assert len(dispatched) == 1
+    assert dispatched[0].description == "Now has a full description."
 
 
 @respx.mock

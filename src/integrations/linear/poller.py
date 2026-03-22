@@ -78,14 +78,16 @@ class LinearPoller:
             team_id=self._team_id, state_name=self._ready_status
         )
         dispatched: list[PollResult] = []
+        _team_states: list[dict] | None = None
         for issue in issues:
             issue_id = issue["id"]
             if issue_id in self._seen:
                 continue
-            self._seen.add(issue_id)
 
             if not _has_sufficient_context(issue):
-                await self._move_to_needs_clarification(issue)
+                if _team_states is None:
+                    _team_states = await self._client.get_team_states(self._team_id)
+                await self._move_to_needs_clarification(issue, _team_states)
                 continue
 
             description = (issue.get("description") or "").strip()
@@ -99,11 +101,12 @@ class LinearPoller:
                 team_id=self._team_id,
             )
             await self._on_issue(result)
+            self._seen.add(issue_id)
             dispatched.append(result)
 
         return dispatched
 
-    async def _move_to_needs_clarification(self, issue: dict) -> None:
+    async def _move_to_needs_clarification(self, issue: dict, states: list[dict] | None = None) -> None:
         issue_id = issue["id"]
         identifier = issue.get("identifier", issue_id)
         logger.warning(
@@ -112,7 +115,8 @@ class LinearPoller:
             NEEDS_CLARIFICATION_STATUS,
         )
         try:
-            states = await self._client.get_team_states(self._team_id)
+            if states is None:
+                states = await self._client.get_team_states(self._team_id)
             state_id = next(
                 (
                     s["id"]
@@ -134,10 +138,8 @@ class LinearPoller:
                     "State '%s' not found in team states; skipping transition",
                     NEEDS_CLARIFICATION_STATUS,
                 )
-        except Exception as exc:
-            logger.error(
-                "Failed to move issue %s to Needs Clarification: %s", identifier, exc
-            )
+        except Exception:
+            logger.exception("Failed to move issue %s to Needs Clarification", identifier)
 
     async def run(self) -> None:
         """Run the poller indefinitely, sleeping between poll cycles."""
@@ -150,6 +152,9 @@ class LinearPoller:
         while True:
             try:
                 await self.poll_once()
-            except Exception as exc:
-                logger.error("Poll cycle failed: %s", exc)
+            except asyncio.CancelledError:
+                logger.info("LinearPoller cancelled; stopping run loop")
+                raise
+            except Exception:
+                logger.exception("Poll cycle failed")
             await asyncio.sleep(self._poll_interval)
