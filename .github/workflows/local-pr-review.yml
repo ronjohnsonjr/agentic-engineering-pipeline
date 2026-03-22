@@ -11,7 +11,7 @@ on:
     branches: [main]
     types: [opened, synchronize, ready_for_review]
     # Exclude changes to the review workflows themselves — claude-code-action@v1
-    # validates the calling workflow against main and will always 401 when the
+    # validates the calling workflow against main and will always fail when the
     # workflow file being reviewed is the same one that changed in the PR.
     paths-ignore:
       - '.github/workflows/local-pr-review.yml'
