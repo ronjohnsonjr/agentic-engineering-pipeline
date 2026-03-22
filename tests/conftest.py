@@ -54,6 +54,18 @@ def find_prompt(workflow: dict) -> str:
     return ""
 
 
+def find_all_prompts(workflow: dict) -> list[str]:
+    """Return all ``prompt`` values found across all steps' ``with`` blocks."""
+    prompts = []
+    for job in workflow.get("jobs", {}).values():
+        for step in job.get("steps", []) or []:
+            if isinstance(step, dict) and isinstance(step.get("with"), dict):
+                prompt = step["with"].get("prompt", "")
+                if prompt:
+                    prompts.append(str(prompt))
+    return prompts
+
+
 @pytest.fixture
 def reusable_workflow_paths() -> list[Path]:
     return [WORKFLOWS_DIR / f"{name}.yml" for name in REUSABLE_WORKFLOW_NAMES]

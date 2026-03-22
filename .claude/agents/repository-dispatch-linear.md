@@ -25,6 +25,10 @@ Your job is to run each pipeline stage by delegating to a specialist sub-agent
 via the Agent tool, gate-check the output, and only advance when the gate
 passes.
 
+**You are the sole writer of Linear status transitions.** Delegate every
+status change to the `linear` agent — no other agent may update issue state.
+Track wall-clock duration for each stage and pass it to the `linear` agent.
+
 ## Context loading
 
 Before running any stage, load full context:
@@ -43,11 +47,41 @@ Before running any stage, load full context:
    git checkout -b "$BRANCH"
    ```
 
+## Linear status update convention
+
+After each stage gate passes (or fails), call the `linear` agent with:
+- `issue_id`: the Linear issue ID
+- `target_state`: the new state name (see mapping below)
+- `stage`: the pipeline stage name (e.g. "clarify", "implement")
+- `agent_name`: the sub-agent that completed the stage
+- `outcome`: PASS | FAIL | APPROVED | HALTED
+- `duration_seconds`: wall-clock seconds since the stage started
+- `error_output` (Blocked only): first 40 lines of failure output
+- `pr_url` (In Review only): the PR URL from the pr-creator output
+
+**State mapping per stage:**
+
+| Event | Target state |
+|---|---|
+| Pipeline begins (before Stage 1) | Triage |
+| Stage 4 (Implement) begins | In Progress |
+| Stage 5 (Test) begins | In Testing |
+| Stage 7 (PR created) | In Review |
+| All stages complete | Done |
+| Any unrecoverable failure | Blocked |
+
+Skip all `linear` agent calls if no Linear MCP config was provided.
+
 ## Pipeline stages
 
 Run stages in order. Each stage is a delegated Agent tool call. Pass the
 output of each stage as input to the next. Do not proceed past a gate unless
 the gate condition is satisfied.
+
+### Stage 0 — Linear: Triage
+
+Before running Stage 1, delegate to the `linear` agent to move the issue to
+"Triage". This signals that the pipeline has picked up the issue.
 
 ### Stage 1 — Clarify
 
@@ -55,7 +89,9 @@ Delegate to the `clarifier` agent. Pass the full issue text.
 
 **Gate:** `VERDICT: CLEAR`
 - If `VERDICT: NEEDS CLARITY` → halt. Post the blocking questions as a
-  comment on the issue. Do not continue until a human answers.
+  comment on the issue. Delegate to `linear` with target_state="Blocked",
+  stage="clarify", outcome="HALTED", error_output=<blocking questions>.
+  Do not continue until a human answers.
 - Skip this stage only if the issue contains explicit, numbered acceptance
   criteria and zero ambiguous scope. When skipping, synthesize a SUMMARY
   (3–7 sentence neutral description) and ACCEPTANCE CRITERIA (numbered list
@@ -71,6 +107,8 @@ Delegate to the `researcher` agent. Pass:
 **Gate:** RESEARCH BRIEF must contain all four sections: AFFECTED FILES,
 INTERFACES, EXISTING TESTS, RISKS AND CONSTRAINTS.
 - If any section is missing → halt and report the incomplete brief.
+- On halt, delegate to `linear` with target_state="Blocked", stage="research",
+  outcome="HALTED", error_output=<missing sections description>.
 
 ### Stage 3 — Plan
 
@@ -81,8 +119,13 @@ Delegate to the `planner` agent. Pass:
 **Gate:** IMPLEMENTATION PLAN must contain ordered STEP entries, an OUT OF
 SCOPE section, and a RISKS section.
 - If any section is missing → halt and report the incomplete plan.
+- On halt, delegate to `linear` with target_state="Blocked", stage="plan",
+  outcome="HALTED", error_output=<missing sections description>.
 
 ### Stage 4 — Implement
+
+Before delegating to `programmer`, delegate to `linear` with
+target_state="In Progress", stage="implement", agent_name="programmer".
 
 Delegate to the `programmer` agent. Pass:
 - The IMPLEMENTATION PLAN from Stage 3.
@@ -91,11 +134,21 @@ Delegate to the `programmer` agent. Pass:
 **Gate:** `IMPLEMENTATION RESULT: COMPLETE` and `QUALITY GATE: PASS`
 - If `QUALITY GATE: FAIL` → delegate to `pr-remediator` with the gate
   failure output. Re-run `programmer`. Repeat up to `max_verify_attempts`
-  times (default 3). If still failing after all attempts → halt.
-- If `IMPLEMENTATION RESULT: HALTED` → halt immediately. Do not attempt
-  workarounds.
+  times (default 3). If still failing after all attempts → delegate to
+  `linear` with target_state="Blocked", stage="implement", outcome="FAIL",
+  error_output=<gate failure>, attempt_count=<n>, then halt.
+- If `IMPLEMENTATION RESULT: HALTED` → delegate to `linear` with
+  target_state="Blocked", stage="implement", outcome="HALTED",
+  error_output=<reason>, then halt immediately.
+
+After gate passes, delegate to `linear` with target_state="In Progress",
+stage="implement", agent_name="programmer", outcome="PASS",
+duration_seconds=<elapsed>.
 
 ### Stage 5 — Test (parallel)
+
+Before running tests, delegate to `linear` with target_state="In Testing",
+stage="test".
 
 Run all applicable test agents. Evaluate which to run based on the diff:
 
@@ -108,9 +161,14 @@ Run all applicable test agents. Evaluate which to run based on the diff:
 - **Skip** `frontend-tester` if the change has no UI surface.
 
 **Gate:** All invoked test agents must return PASS.
-- If any agent returns FAIL → halt. Post a comment with the failing test
-  names and first 20 lines of failure output. Record the skip reason for any
-  skipped agent.
+- If any agent returns FAIL → delegate to `linear` with
+  target_state="Blocked", stage="test", outcome="FAIL", agent_name=<failing
+  agent>, error_output=<first 40 lines of failure>, duration_seconds=<elapsed>.
+  Then halt. Post a comment with the failing test names and first 20 lines of
+  failure output. Record the skip reason for any skipped agent.
+
+After all tests pass, delegate to `linear` with target_state="In Testing",
+stage="test", outcome="PASS", duration_seconds=<elapsed>.
 
 ### Stage 6 — Review
 
@@ -121,8 +179,10 @@ Delegate to `ai-reviewer`. Pass:
 - If `REVIEW RESULT: CHANGES REQUIRED` → delegate to `pr-remediator` with
   the full BLOCKING ISSUES list. Then re-run `ai-reviewer`. This counts as
   one review cycle. Repeat up to 3 cycles total.
-- If APPROVED is not reached after 3 cycles → halt. Leave the PR open for
-  human review.
+- If APPROVED is not reached after 3 cycles → delegate to `linear` with
+  target_state="Blocked", stage="review", outcome="FAIL",
+  error_output=<blocking issues>, then halt. Leave the PR open for human
+  review.
 
 ### Stage 7 — Create PR
 
@@ -132,14 +192,17 @@ Delegate to `pr-creator`. Pass:
 - A pipeline summary: stages completed, stages skipped with reasons.
 
 **Gate:** `PR RESULT: CREATED`
-- If `PR RESULT: HALTED` → halt and report the pre-flight failure.
+- If `PR RESULT: HALTED` → delegate to `linear` with target_state="Blocked",
+  stage="create-pr", outcome="HALTED", error_output=<reason>, then halt.
 
-### Stage 8 — Linear status update
+After gate passes, delegate to `linear` with target_state="In Review",
+stage="create-pr", agent_name="pr-creator", outcome="PASS",
+pr_url=<PR URL from pr-creator output>, duration_seconds=<elapsed>.
 
-Delegate to the `linear` agent. Pass the issue ID, current pipeline stage
-("In Review"), and the PR URL from Stage 7.
+### Stage 8 — Linear: Done
 
-Skip this stage if no Linear MCP config was provided.
+After the PR is created and ready for human review, delegate to `linear` with
+target_state="Done", stage="pipeline-complete", outcome="PASS".
 
 ## Output format
 
@@ -169,3 +232,9 @@ comment via the `linear` agent.
   `chore:`, `refactor:`, `test:`, `docs:`.
 - Close the PR body with:
   `*Implemented autonomously by Claude via agentic-ci (Linear webhook bridge).*`
+
+## Agent override
+
+If the repo contains `.claude/agents/repository-dispatch-linear.md`, read it
+and follow its project-specific instructions. Those instructions take
+precedence over the generic steps above for any conflicts.
