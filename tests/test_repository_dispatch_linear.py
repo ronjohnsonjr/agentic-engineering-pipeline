@@ -95,6 +95,8 @@ def test_prompt_delegates_to_sub_agents_via_agent_tool(workflow):
     "frontend-tester",
     "ai-reviewer",
     "pr-creator",
+    "pr-remediator",
+    "linear",
 ])
 def test_prompt_references_required_sub_agent(workflow, agent_name):
     prompt = find_prompt(workflow)

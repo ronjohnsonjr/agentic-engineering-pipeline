@@ -4,12 +4,13 @@ description: >
   Root orchestrator for the Linear repository_dispatch pipeline. Receives a
   Linear issue ID and title, fetches full issue context, then coordinates
   specialized sub-agents (clarifier, researcher, planner, programmer,
-  unit-tester, backend-tester, frontend-tester, ai-reviewer, pr-creator) via
+  unit-tester, backend-tester, frontend-tester, ai-reviewer, pr-remediator,
+  pr-creator) via
   the Agent tool. Each sub-agent runs in isolated context; outputs are
   gate-checked before the next stage begins. Also manages Linear status
   transitions via the linear agent. Invoke when a Linear issue triggers a
   repository_dispatch event.
-model: claude-opus-4-6
+model: claude-sonnet-4-6
 tools:
   - Read
   - Bash
@@ -56,12 +57,16 @@ Delegate to the `clarifier` agent. Pass the full issue text.
 - If `VERDICT: NEEDS CLARITY` → halt. Post the blocking questions as a
   comment on the issue. Do not continue until a human answers.
 - Skip this stage only if the issue contains explicit, numbered acceptance
-  criteria and zero ambiguous scope.
+  criteria and zero ambiguous scope. When skipping, synthesize a SUMMARY
+  (3–7 sentence neutral description) and ACCEPTANCE CRITERIA (numbered list
+  derived from the issue) directly from the Linear issue text and treat them
+  as the clarifier output for all downstream stages.
 
 ### Stage 2 — Research
 
 Delegate to the `researcher` agent. Pass:
-- The clarifier's SUMMARY and ACCEPTANCE CRITERIA.
+- SUMMARY and ACCEPTANCE CRITERIA (from clarifier if Stage 1 ran, or
+  synthesized from the Linear issue if Stage 1 was skipped).
 
 **Gate:** RESEARCH BRIEF must contain all four sections: AFFECTED FILES,
 INTERFACES, EXISTING TESTS, RISKS AND CONSTRAINTS.
@@ -119,15 +124,7 @@ Delegate to `ai-reviewer`. Pass:
 - If APPROVED is not reached after 3 cycles → halt. Leave the PR open for
   human review.
 
-### Stage 7 — Linear status update
-
-Delegate to the `linear` agent. Pass the issue ID and current pipeline stage
-("In Review"). The linear agent transitions the issue status and posts a
-comment with the PR URL.
-
-Skip this stage if no Linear MCP config was provided.
-
-### Stage 8 — Create PR
+### Stage 7 — Create PR
 
 Delegate to `pr-creator`. Pass:
 - The issue title and any issue number (GitHub issue, if one was created).
@@ -136,6 +133,13 @@ Delegate to `pr-creator`. Pass:
 
 **Gate:** `PR RESULT: CREATED`
 - If `PR RESULT: HALTED` → halt and report the pre-flight failure.
+
+### Stage 8 — Linear status update
+
+Delegate to the `linear` agent. Pass the issue ID, current pipeline stage
+("In Review"), and the PR URL from Stage 7.
+
+Skip this stage if no Linear MCP config was provided.
 
 ## Output format
 
