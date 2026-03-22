@@ -25,6 +25,10 @@ on:
         description: "Additional CLI args passed to claude-code-action"
         type: string
         default: ""
+      pr_number:
+        description: "PR number to review (required when triggered via workflow_dispatch)"
+        type: number
+        default: 0
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
@@ -42,10 +46,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Resolve PR ref
+        id: pr-ref
+        if: inputs.pr_number != 0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number }} --jq '.head.sha')
+          echo "sha=$sha" >> $GITHUB_OUTPUT
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ steps.pr-ref.outputs.sha || github.event.pull_request.head.sha || github.sha }}
 
       - name: Run Claude PR Review Orchestrator
         uses: anthropics/claude-code-action@v1
@@ -56,7 +70,7 @@ jobs:
             actions: read
           claude_args: ${{ inputs.claude_args }}
           prompt: |
-            You are running an automated PR review workflow on PR #${{ github.event.pull_request.number }}.
+            You are running an automated PR review workflow on PR #${{ inputs.pr_number || github.event.pull_request.number }}.
 
             ## Your task
 
@@ -67,17 +81,17 @@ jobs:
 
             Check whether Copilot has already been requested or has already reviewed:
             ```
-            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers
-            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews
+            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/requested_reviewers
+            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/reviews
             ```
             If Copilot is not already a requested reviewer and has not yet reviewed, request it:
             ```
-            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers \
+            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/requested_reviewers \
               -X POST -f 'reviewers[]=Copilot'
             ```
             If that fails (Copilot may be a GitHub App, not a user), try:
             ```
-            gh pr edit ${{ github.event.pull_request.number }} --add-reviewer "Copilot"
+            gh pr edit ${{ inputs.pr_number || github.event.pull_request.number }} --add-reviewer "Copilot"
             ```
             If both fail, note it and continue — Copilot may already be auto-triggered.
 
@@ -85,7 +99,7 @@ jobs:
 
             Read the PR diff and all changed files:
             ```
-            gh pr diff ${{ github.event.pull_request.number }}
+            gh pr diff ${{ inputs.pr_number || github.event.pull_request.number }}
             ```
             Conduct your own thorough code review. For each issue you find, post an inline
             review comment using the GitHub API. At the end, submit your review as COMMENT
@@ -97,7 +111,7 @@ jobs:
             a review from copilot, github-copilot[bot], copilot-pull-request-reviewer[bot],
             or github-code-quality appears:
             ```
-            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews
+            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/reviews
             ```
             If Copilot does not respond within the wait window, proceed with only your own comments.
 
@@ -105,8 +119,8 @@ jobs:
 
             Collect every inline comment and review summary on the PR:
             ```
-            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments
-            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews
+            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/comments
+            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/reviews
             ```
             Include comments from Copilot, yourself, and any other reviewers. Skip any comment
             you have already replied to in a previous round.
