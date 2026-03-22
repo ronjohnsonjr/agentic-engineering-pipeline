@@ -1,7 +1,11 @@
+import logging
+
 import httpx
 
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
+
+logger = logging.getLogger(__name__)
 
 
 class LinearClient:
@@ -85,7 +89,17 @@ class LinearClient:
         }
         """
         data = await self._query(query, {"teamId": team_id, "stateName": state_name})
-        return data["team"]["issues"]["nodes"]
+        team = data.get("team")
+        if team is None:
+            raise ValueError(f"Team {team_id!r} not found in Linear")
+        nodes = team["issues"]["nodes"]
+        if len(nodes) == 100:
+            logger.warning(
+                "get_issues_by_state returned exactly 100 issues for team %s — "
+                "results may be truncated; pagination is not implemented.",
+                team_id,
+            )
+        return nodes
 
     async def get_team_states(self, team_id: str) -> list[dict]:
         query = """

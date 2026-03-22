@@ -44,9 +44,10 @@ def _has_sufficient_context(issue: dict) -> bool:
 def _extract_acceptance_criteria(description: str) -> str:
     """Extract acceptance criteria section from description if present."""
     lower = description.lower()
-    idx = lower.find("## acceptance criteria")
-    if idx != -1:
-        return description[idx:]
+    for prefix in ("## acceptance criteria", "# acceptance criteria"):
+        idx = lower.find(prefix)
+        if idx != -1:
+            return description[idx:]
     return ""
 
 
@@ -100,8 +101,12 @@ class LinearPoller:
                 thread_id=make_thread_id(issue_id),
                 team_id=self._team_id,
             )
-            await self._on_issue(result)
             self._seen.add(issue_id)
+            try:
+                await self._on_issue(result)
+            except Exception:
+                logger.exception("Callback failed for issue %s; will not retry", issue_id)
+                continue
             dispatched.append(result)
 
         return dispatched

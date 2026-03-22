@@ -1,3 +1,6 @@
+import asyncio
+from unittest.mock import AsyncMock, patch
+
 import pytest
 import respx
 import httpx
@@ -352,3 +355,47 @@ async def test_client_get_issues_by_state():
     result = await client.get_issues_by_state(team_id=TEAM_ID, state_name=READY_FOR_DEV_STATUS)
     assert len(result) == 1
     assert result[0]["identifier"] == "AGE-5"
+
+
+# ---------------------------------------------------------------------------
+# Tests for LinearPoller.run()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_stops_on_cancelled_error():
+    """CancelledError must propagate out of run() for clean shutdown."""
+    client = LinearClient(api_key=MOCK_API_KEY)
+
+    async def on_issue_noop(result: PollResult) -> None:
+        pass
+
+    poller = LinearPoller(client=client, team_id=TEAM_ID, on_issue=on_issue_noop, poll_interval=0)
+    poller.poll_once = AsyncMock(side_effect=asyncio.CancelledError)
+
+    with pytest.raises(asyncio.CancelledError):
+        await poller.run()
+
+
+@pytest.mark.asyncio
+async def test_run_continues_after_poll_exception(caplog):
+    """A non-cancellation exception in poll_once must be logged and the loop must continue."""
+    import logging
+
+    client = LinearClient(api_key=MOCK_API_KEY)
+
+    async def on_issue_noop(result: PollResult) -> None:
+        pass
+
+    poller = LinearPoller(client=client, team_id=TEAM_ID, on_issue=on_issue_noop, poll_interval=0)
+
+    # First call raises a generic exception; second call raises CancelledError to stop the loop.
+    poller.poll_once = AsyncMock(
+        side_effect=[RuntimeError("boom"), asyncio.CancelledError()]
+    )
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(asyncio.CancelledError):
+            await poller.run()
+
+    assert "Poll cycle failed" in caplog.text
