@@ -49,3 +49,51 @@ def test_prompt_has_rules_section(workflow):
     prompt = find_prompt(workflow)
     assert prompt, "No prompt found in workflow steps"
     assert "## Rules" in prompt, "Prompt is missing '## Rules' section"
+
+
+def test_prompt_waits_for_reviewed_changes_text(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "Reviewed changes" in prompt, (
+        "Prompt must gate on the Copilot review body containing 'Reviewed changes'"
+    )
+
+
+def test_prompt_resolves_threads_via_graphql(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "resolveReviewThread" in prompt, (
+        "Prompt must resolve each thread via the resolveReviewThread GraphQL mutation"
+    )
+
+
+def test_prompt_fetches_thread_ids_via_graphql(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "reviewThreads" in prompt, (
+        "Prompt must fetch review thread IDs via GraphQL reviewThreads query"
+    )
+
+
+def test_prompt_resolves_thread_immediately_after_reply(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "immediately after replying" in prompt or "immediately after" in prompt, (
+        "Prompt must instruct resolving a thread immediately after replying to it"
+    )
+
+
+def test_prompt_posts_summary_comment(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "Code Review Summary" in prompt, (
+        "Prompt must instruct posting a 'Code Review Summary' comment on the PR"
+    )
+
+
+def test_prompt_does_not_exit_before_summary(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "Do NOT exit" in prompt, (
+        "Prompt must contain 'Do NOT exit' to prevent premature termination"
+    )
