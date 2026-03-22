@@ -27,7 +27,7 @@ PIPELINE_STATES: list[str] = [
 BLOCKED_STATE = "Blocked"
 
 # Valid transitions per source state.
-# Any state can move to Blocked (failure path).
+# Any non-Done state can move to Blocked (failure path); Done is terminal.
 # Forward movement follows the pipeline order; some backward steps are
 # allowed for remediation cycles.
 VALID_TRANSITIONS: dict[str, list[str]] = {
@@ -117,6 +117,13 @@ class StateMachine:
                     f"Allowed from '{from_state}': {allowed}"
                 )
 
+        # Blocked transitions must carry a full diagnostic payload
+        if to_state == BLOCKED_STATE:
+            if not stage:
+                raise ValueError("'stage' is required when transitioning to Blocked.")
+            if not error_output:
+                raise ValueError("'error_output' is required when transitioning to Blocked.")
+
         state_id = await self._resolve_state_id(to_state)
         await self._client.update_issue_state(self._issue_id, state_id)
 
@@ -161,7 +168,7 @@ def _build_transition_comment(
     ]
     if stage:
         lines.append(f"- Stage: `{stage}`")
-    if attempt_count > 1:
+    if to_state == BLOCKED_STATE or attempt_count > 1:
         lines.append(f"- Attempt: {attempt_count}")
     if to_state == BLOCKED_STATE and error_output:
         lines.append("\n**Diagnostic:**")

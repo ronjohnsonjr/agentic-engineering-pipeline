@@ -127,6 +127,24 @@ class TestTransitionValidation:
         sm._client.update_issue_state.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_blocked_requires_stage(self):
+        sm = _make_sm(state_name=BLOCKED_STATE)
+        with pytest.raises(ValueError, match="stage"):
+            await sm.transition(
+                to_state=BLOCKED_STATE, actor=AUTHORIZED_ACTOR, error_output="err"
+            )
+        sm._client.update_issue_state.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_blocked_requires_error_output(self):
+        sm = _make_sm(state_name=BLOCKED_STATE)
+        with pytest.raises(ValueError, match="error_output"):
+            await sm.transition(
+                to_state=BLOCKED_STATE, actor=AUTHORIZED_ACTOR, stage="test"
+            )
+        sm._client.update_issue_state.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_any_state_can_transition_to_blocked_with_from_state(self):
         for from_state in PIPELINE_STATES[:-1]:
             client = _make_client(state_name=BLOCKED_STATE, state_id="blocked-id")
@@ -203,7 +221,7 @@ class TestTransitionToBlocked:
             attempt_count=3,
         )
         comment_body = client.add_comment.call_args.args[1]
-        assert "3" in comment_body
+        assert "Attempt: 3" in comment_body
 
     @pytest.mark.asyncio
     async def test_stage_name_in_comment(self):
@@ -263,10 +281,16 @@ class TestBuildTransitionComment:
         comment = _build_transition_comment(
             to_state="In Progress", stage="plan", error_output=None, attempt_count=2
         )
-        assert "2" in comment
+        assert "Attempt: 2" in comment
 
-    def test_attempt_count_hidden_when_1(self):
+    def test_attempt_count_hidden_when_1_for_non_blocked(self):
         comment = _build_transition_comment(
             to_state="In Progress", stage="plan", error_output=None, attempt_count=1
         )
         assert "Attempt" not in comment
+
+    def test_attempt_count_always_shown_for_blocked(self):
+        comment = _build_transition_comment(
+            to_state=BLOCKED_STATE, stage="test", error_output="build failed", attempt_count=1
+        )
+        assert "Attempt: 1" in comment
