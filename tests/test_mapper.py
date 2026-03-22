@@ -109,6 +109,9 @@ class TestMapPipelineStateToLinear:
     def test_research_success_maps_to_triage(self):
         assert map_pipeline_state_to_linear("research", "success") == "Triage"
 
+    def test_research_failure_maps_to_blocked(self):
+        assert map_pipeline_state_to_linear("research", "failure") == "Blocked"
+
     def test_plan_failure_maps_to_blocked(self):
         assert map_pipeline_state_to_linear("plan", "failure") == "Blocked"
 

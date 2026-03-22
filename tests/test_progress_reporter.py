@@ -78,6 +78,7 @@ class TestPipelineProgressReporter:
         client.update_issue_state.assert_awaited_once()
         comment_body = client.add_comment.call_args.args[1]
         assert "pr-created" in comment_body
+        assert "https://github.com/org/repo/pull/42" in comment_body
 
     @pytest.mark.asyncio
     async def test_report_remediation_success(self):

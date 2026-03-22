@@ -65,6 +65,7 @@ class PipelineProgressReporter:
                 actor="orchestrator",
                 stage=stage,
                 outcome=outcome,
+                pr_url=pr_url,
             )
 
     @classmethod

@@ -57,7 +57,7 @@ async def validate_research_gate(
     if reporter is not None:
         status = "success" if passed else "failure"
         if passed:
-            summary = brief.summary.strip() or f"{len(brief.relevant_files)} relevant files identified"
+            summary = brief.summary.strip()
             await reporter.report_milestone("research", status, summary=summary)
         else:
             errors: list[str] = []

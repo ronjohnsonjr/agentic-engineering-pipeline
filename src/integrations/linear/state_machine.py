@@ -88,6 +88,7 @@ class StateMachine:
         agent_name: str | None = None,
         duration_seconds: float | None = None,
         outcome: str | None = None,
+        pr_url: str = "",
     ) -> None:
         """Transition the issue to *to_state* and post a timestamped comment.
 
@@ -141,6 +142,7 @@ class StateMachine:
             agent_name=agent_name,
             duration_seconds=duration_seconds,
             outcome=outcome,
+            pr_url=pr_url,
         )
         await self._client.add_comment(self._issue_id, comment)
 
@@ -176,6 +178,7 @@ def _build_transition_comment(
     agent_name: str | None = None,
     duration_seconds: float | None = None,
     outcome: str | None = None,
+    pr_url: str = "",
 ) -> str:
     """Build the audit comment posted to Linear on each state change."""
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -192,6 +195,8 @@ def _build_transition_comment(
         lines.append(f"- Outcome: `{outcome}`")
     if duration_seconds is not None:
         lines.append(f"- Duration: `{duration_seconds:.1f}s`")
+    if pr_url:
+        lines.append(f"- PR: {pr_url}")
     if to_state == BLOCKED_STATE or attempt_count > 1:
         lines.append(f"- Attempt: {attempt_count}")
     if to_state == BLOCKED_STATE and error_output:
