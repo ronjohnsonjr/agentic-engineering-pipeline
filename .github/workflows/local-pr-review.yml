@@ -24,9 +24,11 @@ permissions:
   id-token: write
   actions: read
 
+# cancel-in-progress is false because the Claude job polls for Copilot
+# internally — killing a running job aborts remediation and wastes tokens.
 concurrency:
-  group: agentic-pr-review-${{ github.ref }}
-  cancel-in-progress: true
+  group: agentic-pr-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   pr-review:
