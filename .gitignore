@@ -6,3 +6,6 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+node_modules/
+dispatcher/node_modules/
+dispatcher/coverage/
