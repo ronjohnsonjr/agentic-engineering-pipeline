@@ -64,6 +64,29 @@ class LinearClient:
         """
         await self._query(mutation, {"issueId": issue_id, "body": body})
 
+    async def get_issues_by_state(self, team_id: str, state_name: str) -> list[dict]:
+        query = """
+        query GetIssuesByState($teamId: String!, $stateName: String!) {
+          team(id: $teamId) {
+            issues(filter: { state: { name: { eq: $stateName } } }) {
+              nodes {
+                id
+                identifier
+                title
+                description
+                priority
+                state { id name }
+                team { id name }
+                labels { nodes { id name } }
+                assignee { id name email }
+              }
+            }
+          }
+        }
+        """
+        data = await self._query(query, {"teamId": team_id, "stateName": state_name})
+        return data["team"]["issues"]["nodes"]
+
     async def get_team_states(self, team_id: str) -> list[dict]:
         query = """
         query GetTeamStates($teamId: String!) {
