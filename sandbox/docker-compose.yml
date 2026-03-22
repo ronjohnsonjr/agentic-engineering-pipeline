@@ -1,0 +1,61 @@
+# Docker Compose for the agentic sandbox with Docker-in-Docker support.
+#
+# Usage:
+#   docker compose -f sandbox/docker-compose.yml up -d
+#   docker compose -f sandbox/docker-compose.yml exec agent bash
+#
+# The `dind` service runs the Docker daemon. The `agent` service points
+# DOCKER_HOST at it, making `docker` commands available to agents without
+# running a daemon inside the agent container itself.
+#
+# Network access: agents can reach public package registries and documentation
+# sites. No production databases or internal services are attached.
+
+version: "3.9"
+
+services:
+  # ── Docker-in-Docker daemon ─────────────────────────────────────────────────
+  dind:
+    image: docker:24-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    networks:
+      - sandbox-net
+    volumes:
+      - dind-storage:/var/lib/docker
+    restart: unless-stopped
+
+  # ── Agent execution environment ─────────────────────────────────────────────
+  agent:
+    build:
+      context: ..
+      dockerfile: sandbox/Dockerfile
+    depends_on:
+      - dind
+    environment:
+      # Point Docker CLI at the DinD daemon; TLS disabled for simplicity.
+      DOCKER_HOST: "tcp://dind:2375"
+      # Git credentials are injected at runtime; never hard-coded here.
+      GH_TOKEN: "${GH_TOKEN:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      # Package registry mirrors can be configured via environment variables.
+      NPM_CONFIG_REGISTRY: "${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org/}"
+      PIP_INDEX_URL: "${PIP_INDEX_URL:-https://pypi.org/simple/}"
+    networks:
+      - sandbox-net
+    volumes:
+      # Mount the checked-out workspace into the container.
+      - "${WORKSPACE_PATH:-.}:/workspace:z"
+    working_dir: /workspace
+    # Keep the container alive for interactive or CI use.
+    command: sleep infinity
+
+networks:
+  # Isolated network: agents can reach the internet but not any host-local
+  # services (production databases, internal APIs) unless explicitly added here.
+  sandbox-net:
+    driver: bridge
+
+volumes:
+  dind-storage:
