@@ -25,20 +25,24 @@ PIPELINE_STATES: list[str] = [
 ]
 
 BLOCKED_STATE = "Blocked"
+NEEDS_CLARIFICATION_STATE = "Needs Clarification"
 
 # Valid transitions per source state.
 # Any non-Done state can move to Blocked (failure path); Done is terminal.
 # Forward movement follows the pipeline order; some backward steps are
 # allowed for remediation cycles.
+# Needs Clarification is a side-path off Ready for Dev when the clarifier
+# requires human input before proceeding.
 VALID_TRANSITIONS: dict[str, list[str]] = {
-    "Backlog":       ["Ready for Dev", BLOCKED_STATE],
-    "Ready for Dev": ["Triage",        BLOCKED_STATE],
-    "Triage":        ["In Progress",   BLOCKED_STATE],
-    "In Progress":   ["In Testing",    BLOCKED_STATE],
-    "In Testing":    ["In Review", "In Progress", BLOCKED_STATE],
-    "In Review":     ["Done", "In Testing",       BLOCKED_STATE],
-    "Done":          [],
-    BLOCKED_STATE:   ["Triage", "In Progress"],
+    "Backlog":                    ["Ready for Dev",             BLOCKED_STATE],
+    "Ready for Dev":              ["Triage", NEEDS_CLARIFICATION_STATE, BLOCKED_STATE],
+    NEEDS_CLARIFICATION_STATE:    ["Triage",                    BLOCKED_STATE],
+    "Triage":                     ["In Progress",               BLOCKED_STATE],
+    "In Progress":                ["In Testing",                BLOCKED_STATE],
+    "In Testing":                 ["In Review", "In Progress",  BLOCKED_STATE],
+    "In Review":                  ["Done", "In Testing",        BLOCKED_STATE],
+    "Done":                       [],
+    BLOCKED_STATE:                ["Triage", "In Progress"],
 }
 
 AUTHORIZED_ACTOR = "orchestrator"

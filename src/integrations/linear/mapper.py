@@ -71,6 +71,7 @@ def pipeline_result_to_linear_comment(result: PipelineResult) -> str:
 # Maps (pipeline_stage, status) -> Linear workflow state name
 _PIPELINE_STATE_MAP: dict[tuple[str, str], str] = {
     ("clarify", "success"): "Triage",
+    ("clarify", "needs_clarification"): "Needs Clarification",
     ("clarify", "failure"): "Blocked",
     ("research", "success"): "Triage",
     ("research", "failure"): "Blocked",
