@@ -14,6 +14,12 @@ from src.pipeline.gates import (
     validate_test_gate,
     validate_review_gate,
 )
+from src.pipeline.orchestrator import (
+    AgentRunState,
+    AgentRunner,
+    Orchestrator,
+    PipelineRun,
+)
 
 __all__ = [
     "ClarifierBrief",
@@ -28,4 +34,8 @@ __all__ = [
     "validate_plan_gate",
     "validate_test_gate",
     "validate_review_gate",
+    "AgentRunState",
+    "AgentRunner",
+    "Orchestrator",
+    "PipelineRun",
 ]
