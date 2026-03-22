@@ -1,0 +1,22 @@
+name: Cleanup skipped Claude Code runs
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 6am UTC daily
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete skipped Claude Code runs older than 24h
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/workflows/claude.yml/runs" \
+            --paginate \
+            --jq '.workflow_runs[] | select(.conclusion == "skipped") | .id' \
+          | xargs -r -I{} gh api --method DELETE \
+            "repos/${{ github.repository }}/actions/runs/{}"
