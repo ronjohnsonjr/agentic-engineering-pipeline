@@ -309,6 +309,8 @@ wait and reviews the PR directly.
 | `LINEAR_API_KEY` | No | issue-to-pr (if using Linear MCP) |
 | `JIRA_API_TOKEN` | No | jira bridge (planned — not yet implemented) |
 
+> **Slack MCP (planned):** A Slack MCP entry is not yet included in `.mcp.json`. When an official Slack MCP server is available, add it under `"slack"` following the existing pattern in `.mcp.json`.
+
 Set at the org level to avoid per-repo configuration:
 
 ```bash
