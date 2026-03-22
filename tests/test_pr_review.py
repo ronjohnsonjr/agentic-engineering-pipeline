@@ -49,3 +49,78 @@ def test_prompt_has_rules_section(workflow):
     prompt = find_prompt(workflow)
     assert prompt, "No prompt found in workflow steps"
     assert "## Rules" in prompt, "Prompt is missing '## Rules' section"
+
+
+def test_prompt_waits_for_reviewed_changes_text(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "Reviewed changes" in prompt, (
+        "Prompt must gate on the Copilot review body containing 'Reviewed changes'"
+    )
+
+
+def test_prompt_resolves_threads_via_graphql(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "resolveReviewThread" in prompt, (
+        "Prompt must resolve each thread via the resolveReviewThread GraphQL mutation"
+    )
+
+
+def test_prompt_fetches_thread_ids_via_graphql(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "reviewThreads" in prompt, (
+        "Prompt must fetch review thread IDs via GraphQL reviewThreads query"
+    )
+
+
+def test_prompt_resolves_thread_immediately_after_reply(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "immediately after replying" in prompt or "immediately after" in prompt, (
+        "Prompt must instruct resolving a thread immediately after replying to it"
+    )
+
+
+def test_prompt_posts_summary_comment(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "Code Review Summary" in prompt, (
+        "Prompt must instruct posting a 'Code Review Summary' comment on the PR"
+    )
+
+
+def test_prompt_does_not_exit_before_summary(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "Do NOT exit" in prompt, (
+        "Prompt must contain 'Do NOT exit' to prevent premature termination"
+    )
+
+
+def test_claude_args_default_includes_dangerously_skip_permissions(workflow):
+    inputs = get_on(workflow)["workflow_call"].get("inputs", {})
+    default = inputs.get("claude_args", {}).get("default", "")
+    assert "--dangerously-skip-permissions" in default, (
+        "claude_args default must include --dangerously-skip-permissions so Claude "
+        "can run gh/bash commands in CI without interactive permission prompts"
+    )
+
+
+def test_claude_args_default_includes_max_turns(workflow):
+    inputs = get_on(workflow)["workflow_call"].get("inputs", {})
+    default = inputs.get("claude_args", {}).get("default", "")
+    assert "--max-turns" in default, (
+        "claude_args default must include --max-turns to allow enough turns to "
+        "process all review threads (9+ threads × 3 sub-steps each)"
+    )
+
+
+def test_prompt_uses_database_id_for_reply_endpoint(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "databaseId" in prompt, (
+        "Prompt must use databaseId (numeric comment ID) for the REST reply endpoint; "
+        "the GraphQL node ID (PRRT_...) is not accepted by /comments/{id}/replies"
+    )
