@@ -7,9 +7,22 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class EnrichedContext(BaseModel):
+    """Additional context extracted from a Linear issue and architectural docs."""
+
+    linear_issue_id: str = ""
+    labels: list[str] = Field(default_factory=list)
+    pipeline_stage: str = ""
+    linked_documents: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    architectural_constraints: list[str] = Field(default_factory=list)
+
+
 class ClarifierBrief(BaseModel):
     verdict: Literal["CLEAR", "NEEDS_CLARITY"]
     questions: list[str] = Field(default_factory=list)
+    confidence_score: float = Field(default=1.0, ge=0.0, le=1.0)
+    enriched_context: EnrichedContext = Field(default_factory=EnrichedContext)
 
 
 class ResearchBrief(BaseModel):

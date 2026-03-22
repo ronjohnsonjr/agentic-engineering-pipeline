@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from src.pipeline.briefs import (
     ClarifierBrief,
+    EnrichedContext,
     ImplementationPlan,
     PipelineResult,
     PlanStep,
@@ -42,6 +43,78 @@ def test_clarifier_brief_invalid_verdict():
 def test_clarifier_brief_questions_default_empty():
     brief = ClarifierBrief(verdict="CLEAR")
     assert brief.questions == []
+
+
+def test_clarifier_brief_confidence_score_default():
+    brief = ClarifierBrief(verdict="CLEAR")
+    assert brief.confidence_score == 1.0
+
+
+def test_clarifier_brief_confidence_score_explicit():
+    brief = ClarifierBrief(verdict="CLEAR", confidence_score=0.92)
+    assert brief.confidence_score == 0.92
+
+
+def test_clarifier_brief_confidence_score_needs_clarity():
+    brief = ClarifierBrief(
+        verdict="NEEDS_CLARITY",
+        questions=["What is the scope?"],
+        confidence_score=0.70,
+    )
+    assert brief.confidence_score == 0.70
+
+
+def test_clarifier_brief_confidence_score_out_of_range_high():
+    with pytest.raises(ValidationError):
+        ClarifierBrief(verdict="CLEAR", confidence_score=1.5)
+
+
+def test_clarifier_brief_confidence_score_out_of_range_low():
+    with pytest.raises(ValidationError):
+        ClarifierBrief(verdict="CLEAR", confidence_score=-0.1)
+
+
+def test_clarifier_brief_confidence_score_boundary_pass_threshold():
+    # 0.85 is the agent-level pass threshold (see agent prompt); the Pydantic model
+    # only validates the 0.0–1.0 range, not verdict/score consistency
+    brief = ClarifierBrief(verdict="CLEAR", confidence_score=0.85)
+    assert brief.confidence_score == 0.85
+
+
+def test_clarifier_brief_enriched_context_default():
+    brief = ClarifierBrief(verdict="CLEAR")
+    ctx = brief.enriched_context
+    assert ctx.linear_issue_id == ""
+    assert ctx.labels == []
+    assert ctx.pipeline_stage == ""
+    assert ctx.linked_documents == []
+    assert ctx.assumptions == []
+    assert ctx.architectural_constraints == []
+
+
+def test_clarifier_brief_enriched_context_populated():
+    ctx = EnrichedContext(
+        linear_issue_id="AGE-87",
+        labels=["phase-1", "foundation"],
+        pipeline_stage="Clarifier (Stage 2)",
+        linked_documents=["https://linear.app/example/issue/AGE-87"],
+        assumptions=["No breaking API changes required"],
+        architectural_constraints=["Must not modify examples/consumer-workflows/"],
+    )
+    brief = ClarifierBrief(verdict="CLEAR", confidence_score=0.90, enriched_context=ctx)
+    assert brief.enriched_context.linear_issue_id == "AGE-87"
+    assert brief.enriched_context.labels == ["phase-1", "foundation"]
+    assert brief.enriched_context.pipeline_stage == "Clarifier (Stage 2)"
+    assert len(brief.enriched_context.linked_documents) == 1
+    assert len(brief.enriched_context.assumptions) == 1
+    assert len(brief.enriched_context.architectural_constraints) == 1
+
+
+def test_enriched_context_standalone():
+    ctx = EnrichedContext(linear_issue_id="AGE-42", labels=["local"])
+    assert ctx.linear_issue_id == "AGE-42"
+    assert ctx.labels == ["local"]
+    assert ctx.pipeline_stage == ""
 
 
 # ---------------------------------------------------------------------------
