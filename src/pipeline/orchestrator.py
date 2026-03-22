@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-from typing import Protocol, runtime_checkable
+import re
+from typing import Literal, Protocol, runtime_checkable
 
 from src.pipeline.briefs import (
     ClarifierBrief,
@@ -77,7 +78,7 @@ class AgentRunState:
     """
 
     stage: str
-    status: str  # "running" | "complete" | "failed" | "timeout" | "skipped"
+    status: Literal["running", "complete", "failed", "timeout", "skipped"]
     output: str = ""
     error: str = ""
     attempt: int = 1
@@ -378,6 +379,14 @@ class Orchestrator:
             try:
                 output = await self._call_agent(self._programmer, prompt)
                 state.output = output
+                if not output.strip():
+                    state.status = "failed"
+                    state.error = "Programmer returned empty output"
+                    if attempt >= self._max_verify:
+                        run.halt("programmer", "Programmer returned empty output after all attempts")
+                        return False
+                    prompt = f"{prompt}\n\nPrevious attempt returned empty output. Please provide implementation."
+                    continue
                 state.status = "complete"
                 run.complete(f"programmer (attempt {attempt})")
                 return True
@@ -411,12 +420,21 @@ class Orchestrator:
         invoked agents must return a PASS; a single FAIL halts the pipeline.
         """
         tasks: dict[str, asyncio.Task[str]] = {}
+        running_states: dict[str, AgentRunState] = {}
 
-        # Always run unit tests
+        # Always run unit tests — record state before creating the task so
+        # run.stages always reflects the intent before any coroutine begins.
+        unit_state = AgentRunState(stage="unit-tester", status="running")
+        run.record(unit_state)
+        running_states["unit-tester"] = unit_state
         tasks["unit-tester"] = asyncio.create_task(
             self._call_agent(self._unit_tester, "Run unit tests.")
         )
+
         if self._run_backend:
+            backend_state = AgentRunState(stage="backend-tester", status="running")
+            run.record(backend_state)
+            running_states["backend-tester"] = backend_state
             tasks["backend-tester"] = asyncio.create_task(
                 self._call_agent(self._backend_tester, "Run backend/integration tests.")
             )
@@ -424,18 +442,14 @@ class Orchestrator:
             run.skip("backend-tester", "no API or database changes detected")
 
         if self._run_frontend:
+            frontend_state = AgentRunState(stage="frontend-tester", status="running")
+            run.record(frontend_state)
+            running_states["frontend-tester"] = frontend_state
             tasks["frontend-tester"] = asyncio.create_task(
                 self._call_agent(self._frontend_tester, "Run frontend/e2e tests.")
             )
         else:
             run.skip("frontend-tester", "no UI surface changes detected")
-
-        # Record "running" states immediately
-        running_states: dict[str, AgentRunState] = {}
-        for name in tasks:
-            state = AgentRunState(stage=name, status="running")
-            run.record(state)
-            running_states[name] = state
 
         # Collect results (order preserved by dict insertion)
         results: list[TestResult] = []
@@ -469,6 +483,11 @@ class Orchestrator:
                 failed_details.append(f"{name}: {exc}")
 
         if not validate_test_gate(results):
+            if all_passed:
+                # Gate failed for a structural reason (e.g. no results produced)
+                # not already captured by the per-task loop — ensure the halt
+                # message is informative rather than "Test failures: ".
+                failed_details.append("test gate validation failed: no results produced")
             all_passed = False
 
         if not all_passed:
@@ -482,12 +501,10 @@ class Orchestrator:
         try:
             output = await self._call_agent(self._pr_creator, "Create the pull request.")
             state.output = output
-            # Extract PR URL from the output (simple heuristic)
-            pr_url: str | None = None
-            for word in output.split():
-                if word.startswith("https://github.com") and "/pull/" in word:
-                    pr_url = word.rstrip(".,)")
-                    break
+            # Extract PR URL from the output; regex handles plain URLs, markdown
+            # links ([text](url)), angle-bracket wrapping, etc.
+            match = re.search(r"https://github\.com[^\s\)\]>\"']+/pull/\d+", output)
+            pr_url: str | None = match.group(0).rstrip(".,)") if match else None
             state.status = "complete"
             run.pr_url = pr_url
             run.complete("pr-creator")

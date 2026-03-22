@@ -601,7 +601,8 @@ class TestReviewCycle:
         )
         result = await orc.run("issue")
         assert result.status == "HALTED"
-        # reviewer called once per cycle, remediator on each non-final cycle
+        # reviewer called once per cycle; remediator runs on every cycle
+        # including the final one (fixes are applied even if not re-reviewed)
         assert reviewer.run.await_count == 3
         assert remediator.run.await_count == 3
 
