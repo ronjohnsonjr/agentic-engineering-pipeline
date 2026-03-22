@@ -97,7 +97,7 @@ def test_clarifier_brief_enriched_context_populated():
         linear_issue_id="AGE-87",
         labels=["phase-1", "foundation"],
         pipeline_stage="Clarifier (Stage 2)",
-        linked_documents=["https://linear.app/real-company-name/issue/AGE-87"],
+        linked_documents=["https://linear.app/example/issue/AGE-87"],
         assumptions=["No breaking API changes required"],
         architectural_constraints=["Must not modify examples/consumer-workflows/"],
     )
