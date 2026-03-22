@@ -60,62 +60,116 @@ jobs:
 
             ## Your task
 
-            Orchestrate a full collaborative code review cycle:
+            Orchestrate a full collaborative code review cycle. Do NOT exit until all steps
+            are complete, including Copilot's review and your remediation of every comment.
 
-            1. CATALOG ALL EXISTING REVIEW COMMENTS on this PR:
-               - Use `gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments` to get inline comments
-               - Use `gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews` to get review summaries
-               - Check for comments from: copilot, github-copilot[bot], copilot-pull-request-reviewer[bot], github-code-quality
+            ### Step 1 — Request Copilot as a reviewer
 
-            2. If Copilot has not yet reviewed, wait up to ${{ inputs.max_copilot_wait_minutes }} minutes
-               (poll every 20s) for a Copilot review to appear.
+            Check whether Copilot has already been requested or has already reviewed:
+            ```
+            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers
+            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews
+            ```
+            If Copilot is not already a requested reviewer and has not yet reviewed, request it:
+            ```
+            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers \
+              -X POST -f 'reviewers[]=Copilot'
+            ```
+            If that fails (Copilot may be a GitHub App, not a user), try:
+            ```
+            gh pr edit ${{ github.event.pull_request.number }} --add-reviewer "Copilot"
+            ```
+            If both fail, note it and continue — Copilot may already be auto-triggered.
 
-            3. For EACH review comment, evaluate and take one of these actions:
+            ### Step 2 — Perform Claude's independent review
 
-               FIX: If the comment identifies a legitimate issue:
-               - Make the code change
-               - Reply to the comment thread: "Resolved: [description]. Changed [file:line] to [description]."
+            Read the PR diff and all changed files:
+            ```
+            gh pr diff ${{ github.event.pull_request.number }}
+            ```
+            Conduct your own thorough code review. For each issue you find, post an inline
+            review comment using the GitHub API. At the end, submit your review as COMMENT
+            (not APPROVE or REQUEST_CHANGES — that is reserved for the summary step).
 
-               ACKNOWLEDGE: If valid but no code change needed:
-               - Reply: "Acknowledged: [explanation]. No change made."
+            ### Step 3 — Wait for Copilot's review
 
-               DECLINE: If incorrect or would degrade quality:
-               - Reply: "Declined: [reasoning]."
+            Poll every 20 seconds, up to ${{ inputs.max_copilot_wait_minutes }} minutes, until
+            a review from copilot, github-copilot[bot], copilot-pull-request-reviewer[bot],
+            or github-code-quality appears:
+            ```
+            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews
+            ```
+            If Copilot does not respond within the wait window, proceed with only your own comments.
 
-            4. After fixing, run whatever quality checks the repo defines:
-               - If a Makefile exists with a `check` target: `make check`
-               - Else if pyproject.toml exists: `ruff check . && pytest`
-               - Else if package.json exists: `npm test`
-               - Otherwise: skip and note "no quality gate found"
+            ### Step 4 — Catalog ALL review comments
 
-            5. Batch related fixes into logical commits with conventional commit messages.
+            Collect every inline comment and review summary on the PR:
+            ```
+            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments
+            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews
+            ```
+            Include comments from Copilot, yourself, and any other reviewers. Skip any comment
+            you have already replied to in a previous round.
 
-            6. Push fixes to the PR branch.
+            ### Step 5 — Remediate every comment
 
-            7. Allow up to ${{ inputs.max_review_rounds }} rounds of Copilot feedback.
-               If Copilot returns the same findings after a fix round, stop early (convergence).
+            For EACH unaddressed comment, take exactly one action:
 
-            8. Post a top-level PR comment with this format:
+            FIX — if the comment identifies a legitimate issue:
+            - Make the minimal code change needed
+            - Reply on the thread: "Resolved: [what changed and why]."
 
-               ## Code Review Summary
+            ACKNOWLEDGE — if valid but no code change is needed:
+            - Reply: "Acknowledged: [explanation]. No change made."
 
-               **Total Comments Reviewed**: N
-               **Resolved (fixed)**: N | **Acknowledged (no change)**: N | **Declined**: N
+            DECLINE — if the suggestion is incorrect or would degrade quality:
+            - Reply: "Declined: [reasoning]."
 
-               ### Changes Made
-               - [list each fix]
+            ### Step 6 — Run quality checks
 
-               ### Items Acknowledged
-               - [list with rationale]
+            After all fixes:
+            - If a Makefile has a `check` target: `make check`
+            - Else if pyproject.toml exists: `ruff check . && pytest`
+            - Else if package.json exists: `npm test`
+            - Otherwise: skip and note "no quality gate found"
 
-               ### Items Declined
-               - [list with rationale]
+            If quality checks fail after a fix, revert that fix and re-classify as DECLINE.
 
-               ### Commits
-               - [SHAs and messages]
+            ### Step 7 — Commit and push
 
-               ---
-               *Review orchestrated by Claude via agentic-ci.*
+            Batch related fixes into logical commits with conventional commit messages.
+            Push to the PR branch.
+
+            ### Step 8 — Iterate (up to ${{ inputs.max_review_rounds }} rounds)
+
+            After pushing, wait up to ${{ inputs.max_copilot_wait_minutes }} minutes for any
+            new Copilot follow-up review. If new comments appear, repeat steps 4–7.
+            Stop early if Copilot repeats the same findings (convergence).
+
+            ### Step 9 — Post summary
+
+            Post a top-level PR comment:
+
+            ## Code Review Summary
+
+            **Reviewers**: [list reviewers whose comments were processed]
+            **Total Comments Reviewed**: N
+            **Resolved (fixed)**: N | **Acknowledged**: N | **Declined**: N
+
+            ### Changes Made
+            - [each fix with file:line reference]
+
+            ### Items Acknowledged
+            - [each with rationale]
+
+            ### Items Declined
+            - [each with rationale]
+
+            ### Commits
+            - [SHAs and messages]
+
+            ---
+            *Review orchestrated by Claude via agentic-ci.*
 
             ## Agent override
 
@@ -128,3 +182,4 @@ jobs:
             - If a fix introduces test failures, revert and decline with explanation.
             - Respect any project conventions from CLAUDE.md if present.
             - Use conventional commits for all fix commits.
+            - Do NOT exit until Step 9 is complete.

@@ -10,13 +10,12 @@ name: "Agentic: PR Review"
 on:
   pull_request:
     types: [opened, ready_for_review]
-  pull_request_review:
-    types: [submitted]
 
-# Skip draft PRs
+# One review run per PR at a time. cancel-in-progress is false because the Claude
+# job polls for Copilot internally — killing a running job would abort remediation.
 concurrency:
   group: agentic-pr-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   review:
