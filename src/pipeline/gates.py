@@ -7,6 +7,8 @@ exceeds the configured maximum).
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from src.pipeline.briefs import (
     ClarifierBrief,
     ImplementationPlan,
@@ -15,46 +17,95 @@ from src.pipeline.briefs import (
     TestResult,
 )
 
+if TYPE_CHECKING:
+    from src.integrations.linear.progress import PipelineProgressReporter
 
-def validate_clarifier_gate(brief: ClarifierBrief) -> bool:
+
+async def validate_clarifier_gate(
+    brief: ClarifierBrief,
+    *,
+    reporter: "PipelineProgressReporter | None" = None,
+) -> bool:
     """Return True only when the clarifier verdict is CLEAR.
 
     Research cannot start until this gate passes.
     """
-    return brief.verdict == "CLEAR"
+    passed = brief.verdict == "CLEAR"
+    if reporter is not None:
+        status = "success" if passed else "failure"
+        await reporter.report_milestone("clarify", status)
+    return passed
 
 
-def validate_research_gate(brief: ResearchBrief) -> bool:
+async def validate_research_gate(
+    brief: ResearchBrief,
+    *,
+    reporter: "PipelineProgressReporter | None" = None,
+) -> bool:
     """Return True when the research brief contains a non-empty summary and at
     least one relevant file.
 
     Planner cannot start until this gate passes.
     """
-    return bool(brief.summary.strip()) and bool(brief.relevant_files)
+    passed = bool(brief.summary.strip()) and bool(brief.relevant_files)
+    if reporter is not None:
+        status = "success" if passed else "failure"
+        await reporter.report_milestone("research", status)
+    return passed
 
 
-def validate_plan_gate(brief: ImplementationPlan) -> bool:
+async def validate_plan_gate(
+    brief: ImplementationPlan,
+    *,
+    reporter: "PipelineProgressReporter | None" = None,
+) -> bool:
     """Return True when the plan references an issue and contains at least one
     step.
 
     Programmer cannot start until this gate passes.
     """
-    return bool(brief.issue.strip()) and bool(brief.steps)
+    passed = bool(brief.issue.strip()) and bool(brief.steps)
+    if reporter is not None:
+        status = "success" if passed else "failure"
+        summary = f"{len(brief.steps)} steps defined" if passed else ""
+        await reporter.report_milestone("plan", status, summary=summary)
+    return passed
 
 
-def validate_test_gate(results: list[TestResult]) -> bool:
+async def validate_test_gate(
+    results: list[TestResult],
+    *,
+    reporter: "PipelineProgressReporter | None" = None,
+) -> bool:
     """Return True only when every test result in *results* passed.
 
     PR creation cannot start until this gate passes. An empty list is treated
     as a failure (no results means the stage did not complete).
     """
     if not results:
+        if reporter is not None:
+            await reporter.report_milestone(
+                "test",
+                "failure",
+                errors=["No test results received"],
+            )
         return False
-    return all(r.passed for r in results)
+    passed = all(r.passed for r in results)
+    if reporter is not None:
+        if passed:
+            await reporter.report_milestone("test", "success")
+        else:
+            errors = [f for r in results for f in r.failures]
+            await reporter.report_milestone("test", "failure", errors=errors)
+    return passed
 
 
-def validate_review_gate(
-    verdict: ReviewVerdict, cycle: int, max_cycles: int
+async def validate_review_gate(
+    verdict: ReviewVerdict,
+    cycle: int,
+    max_cycles: int,
+    *,
+    reporter: "PipelineProgressReporter | None" = None,
 ) -> bool:
     """Return True when the reviewer approved the PR.
 
@@ -66,4 +117,8 @@ def validate_review_gate(
             f"Review cycle {cycle} exceeds max_cycles {max_cycles}; "
             "pipeline should have halted before reaching this gate."
         )
-    return verdict.verdict == "APPROVED"
+    passed = verdict.verdict == "APPROVED"
+    if reporter is not None:
+        status = "success" if passed else "failure"
+        await reporter.report_milestone("review", status)
+    return passed

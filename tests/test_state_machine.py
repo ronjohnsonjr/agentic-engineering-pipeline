@@ -189,6 +189,19 @@ class TestLinearAPICalls:
         with pytest.raises(ValueError, match="not found in team states"):
             await sm.transition(to_state="NonExistentState", actor=AUTHORIZED_ACTOR)
 
+    @pytest.mark.asyncio
+    async def test_milestone_body_passed_through_to_comment(self):
+        client = _make_client(state_name="In Progress")
+        sm = StateMachine(client=client, issue_id="issue-10", team_id="team-10")
+        await sm.transition(
+            to_state="In Progress",
+            actor=AUTHORIZED_ACTOR,
+            stage="plan",
+            milestone_body="Milestone: 5 steps defined",
+        )
+        comment_body = client.add_comment.call_args.args[1]
+        assert "Milestone: 5 steps defined" in comment_body
+
 
 # ---------------------------------------------------------------------------
 # transition_to_blocked convenience wrapper
@@ -294,3 +307,23 @@ class TestBuildTransitionComment:
             to_state=BLOCKED_STATE, stage="test", error_output="build failed", attempt_count=1
         )
         assert "Attempt: 1" in comment
+
+    def test_milestone_body_included_when_provided(self):
+        comment = _build_transition_comment(
+            to_state="In Progress",
+            stage="plan",
+            error_output=None,
+            attempt_count=1,
+            milestone_body="Plan complete: 5 steps defined",
+        )
+        assert "Plan complete: 5 steps defined" in comment
+
+    def test_milestone_body_omitted_when_none(self):
+        comment = _build_transition_comment(
+            to_state="In Progress",
+            stage="plan",
+            error_output=None,
+            attempt_count=1,
+            milestone_body=None,
+        )
+        assert "Plan complete" not in comment
