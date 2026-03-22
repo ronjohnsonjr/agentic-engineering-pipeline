@@ -75,3 +75,46 @@ def test_prompt_references_repository_dispatch_linear_agent(workflow):
     assert "repository-dispatch-linear" in prompt, (
         "Prompt must reference the .claude/agents/repository-dispatch-linear.md override"
     )
+
+
+def test_prompt_delegates_to_sub_agents_via_agent_tool(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "Agent tool" in prompt, (
+        "Prompt must instruct root agent to use the Agent tool to spawn sub-agents"
+    )
+
+
+@pytest.mark.parametrize("agent_name", [
+    "clarifier",
+    "researcher",
+    "planner",
+    "programmer",
+    "unit-tester",
+    "backend-tester",
+    "frontend-tester",
+    "ai-reviewer",
+    "pr-creator",
+])
+def test_prompt_references_required_sub_agent(workflow, agent_name):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert agent_name in prompt, (
+        f"Prompt must delegate to the '{agent_name}' sub-agent"
+    )
+
+
+def test_prompt_gate_checks_outputs(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "Gate" in prompt or "gate" in prompt, (
+        "Prompt must describe gate-checking sub-agent outputs before advancing stages"
+    )
+
+
+def test_prompt_references_agents_md(workflow):
+    prompt = find_prompt(workflow)
+    assert prompt, "No prompt found in workflow steps"
+    assert "AGENTS.md" in prompt, (
+        "Prompt must instruct root agent to load AGENTS.md for pipeline context"
+    )
