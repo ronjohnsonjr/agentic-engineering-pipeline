@@ -85,7 +85,9 @@ class StateMachine:
         stage: str | None = None,
         error_output: str | None = None,
         attempt_count: int = 1,
-        milestone_body: str | None = None,
+        agent_name: str | None = None,
+        duration_seconds: float | None = None,
+        outcome: str | None = None,
     ) -> None:
         """Transition the issue to *to_state* and post a timestamped comment.
 
@@ -97,7 +99,9 @@ class StateMachine:
             stage: Pipeline stage name (used in audit comment).
             error_output: Error details when transitioning to Blocked.
             attempt_count: Number of attempts (used in Blocked diagnostic comment).
-            milestone_body: Optional milestone summary inserted into the audit comment.
+            agent_name: Name of the agent that completed this stage (e.g. "programmer").
+            duration_seconds: Wall-clock seconds the stage took to complete.
+            outcome: Stage result string (e.g. "PASS", "FAIL", "APPROVED").
 
         Raises:
             PermissionError: If *actor* is not the authorized orchestrator.
@@ -134,7 +138,9 @@ class StateMachine:
             stage=stage,
             error_output=error_output,
             attempt_count=attempt_count,
-            milestone_body=milestone_body,
+            agent_name=agent_name,
+            duration_seconds=duration_seconds,
+            outcome=outcome,
         )
         await self._client.add_comment(self._issue_id, comment)
 
@@ -145,7 +151,8 @@ class StateMachine:
         error_output: str,
         attempt_count: int = 1,
         from_state: str | None = None,
-        milestone_body: str | None = None,
+        agent_name: str | None = None,
+        duration_seconds: float | None = None,
     ) -> None:
         """Convenience wrapper: transition to Blocked with a diagnostic comment."""
         await self.transition(
@@ -155,7 +162,9 @@ class StateMachine:
             stage=stage,
             error_output=error_output,
             attempt_count=attempt_count,
-            milestone_body=milestone_body,
+            agent_name=agent_name,
+            duration_seconds=duration_seconds,
+            outcome="FAIL",
         )
 
 
@@ -164,24 +173,28 @@ def _build_transition_comment(
     stage: str | None,
     error_output: str | None,
     attempt_count: int,
-    *,
-    milestone_body: str | None = None,
+    agent_name: str | None = None,
+    duration_seconds: float | None = None,
+    outcome: str | None = None,
 ) -> str:
     """Build the audit comment posted to Linear on each state change."""
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     lines: list[str] = [
         f"**Status → {to_state}** _(pipeline audit)_",
         f"- Timestamp: `{timestamp}`",
+        f"- Attribution: `{AUTHORIZED_ACTOR}`",
     ]
     if stage:
         lines.append(f"- Stage: `{stage}`")
+    if agent_name:
+        lines.append(f"- Agent: `{agent_name}`")
+    if outcome:
+        lines.append(f"- Outcome: `{outcome}`")
+    if duration_seconds is not None:
+        lines.append(f"- Duration: `{duration_seconds:.1f}s`")
     if to_state == BLOCKED_STATE or attempt_count > 1:
         lines.append(f"- Attempt: {attempt_count}")
-    if milestone_body:
-        lines.append("")
-        lines.append(milestone_body)
     if to_state == BLOCKED_STATE and error_output:
-        safe_error = error_output.replace("```", "'''")
         lines.append("\n**Diagnostic:**")
-        lines.append(f"```\n{safe_error.strip()}\n```")
+        lines.append(f"```\n{error_output.strip()}\n```")
     return "\n".join(lines)

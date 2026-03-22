@@ -182,25 +182,29 @@ class TestLinearAPICalls:
         assert "In Review" in comment_body
 
     @pytest.mark.asyncio
+    async def test_transition_passes_agent_name_duration_outcome_to_comment(self):
+        client = _make_client(state_name="In Testing", state_id="state-42")
+        sm = StateMachine(client=client, issue_id="issue-7", team_id="team-7")
+        await sm.transition(
+            to_state="In Testing",
+            actor=AUTHORIZED_ACTOR,
+            stage="test",
+            agent_name="unit-tester",
+            duration_seconds=15.3,
+            outcome="PASS",
+        )
+        comment_body = client.add_comment.call_args.args[1]
+        assert "unit-tester" in comment_body
+        assert "15.3s" in comment_body
+        assert "PASS" in comment_body
+
+    @pytest.mark.asyncio
     async def test_unknown_state_name_raises_value_error(self):
         client = MagicMock()
         client.get_team_states = AsyncMock(return_value=[{"id": "s1", "name": "Todo", "type": "unstarted"}])
         sm = StateMachine(client=client, issue_id="issue-9", team_id="team-9")
         with pytest.raises(ValueError, match="not found in team states"):
             await sm.transition(to_state="NonExistentState", actor=AUTHORIZED_ACTOR)
-
-    @pytest.mark.asyncio
-    async def test_milestone_body_passed_through_to_comment(self):
-        client = _make_client(state_name="In Progress")
-        sm = StateMachine(client=client, issue_id="issue-10", team_id="team-10")
-        await sm.transition(
-            to_state="In Progress",
-            actor=AUTHORIZED_ACTOR,
-            stage="plan",
-            milestone_body="Milestone: 5 steps defined",
-        )
-        comment_body = client.add_comment.call_args.args[1]
-        assert "Milestone: 5 steps defined" in comment_body
 
 
 # ---------------------------------------------------------------------------
@@ -308,22 +312,55 @@ class TestBuildTransitionComment:
         )
         assert "Attempt: 1" in comment
 
-    def test_milestone_body_included_when_provided(self):
+    def test_includes_attribution(self):
         comment = _build_transition_comment(
-            to_state="In Progress",
-            stage="plan",
-            error_output=None,
-            attempt_count=1,
-            milestone_body="Plan complete: 5 steps defined",
+            to_state="In Progress", stage="plan", error_output=None, attempt_count=1
         )
-        assert "Plan complete: 5 steps defined" in comment
+        assert AUTHORIZED_ACTOR in comment
 
-    def test_milestone_body_omitted_when_none(self):
+    def test_agent_name_included_when_provided(self):
         comment = _build_transition_comment(
-            to_state="In Progress",
-            stage="plan",
-            error_output=None,
-            attempt_count=1,
-            milestone_body=None,
+            to_state="In Progress", stage="implement", error_output=None,
+            attempt_count=1, agent_name="programmer"
         )
-        assert "Plan complete" not in comment
+        assert "programmer" in comment
+
+    def test_agent_name_omitted_when_none(self):
+        comment = _build_transition_comment(
+            to_state="In Progress", stage="plan", error_output=None, attempt_count=1
+        )
+        assert "Agent:" not in comment
+
+    def test_duration_included_when_provided(self):
+        comment = _build_transition_comment(
+            to_state="In Testing", stage="test", error_output=None,
+            attempt_count=1, duration_seconds=42.5
+        )
+        assert "42.5s" in comment
+
+    def test_duration_omitted_when_none(self):
+        comment = _build_transition_comment(
+            to_state="In Testing", stage="test", error_output=None, attempt_count=1
+        )
+        assert "Duration:" not in comment
+
+    def test_outcome_included_when_provided(self):
+        comment = _build_transition_comment(
+            to_state="In Review", stage="review", error_output=None,
+            attempt_count=1, outcome="APPROVED"
+        )
+        assert "APPROVED" in comment
+
+    def test_outcome_omitted_when_none(self):
+        comment = _build_transition_comment(
+            to_state="In Review", stage="review", error_output=None, attempt_count=1
+        )
+        assert "Outcome:" not in comment
+
+    def test_outcome_fail_set_by_transition_to_blocked(self):
+        """transition_to_blocked() convenience wrapper sets outcome=FAIL."""
+        comment = _build_transition_comment(
+            to_state=BLOCKED_STATE, stage="test", error_output="err",
+            attempt_count=1, outcome="FAIL"
+        )
+        assert "FAIL" in comment

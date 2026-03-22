@@ -45,7 +45,7 @@ class TestPipelineProgressReporter:
         client.add_comment.assert_awaited_once()
         comment_body = client.add_comment.call_args.args[1]
         assert "plan" in comment_body
-        assert "5 steps defined" in comment_body
+        assert "PASS" in comment_body
 
     @pytest.mark.asyncio
     async def test_report_test_success(self):
@@ -65,7 +65,7 @@ class TestPipelineProgressReporter:
         )
         client.update_issue_state.assert_awaited_once()
         comment_body = client.add_comment.call_args.args[1]
-        assert "3 tests failed" in comment_body
+        assert "FAIL" in comment_body
 
     @pytest.mark.asyncio
     async def test_report_pr_created(self):
@@ -77,7 +77,7 @@ class TestPipelineProgressReporter:
         )
         client.update_issue_state.assert_awaited_once()
         comment_body = client.add_comment.call_args.args[1]
-        assert "https://github.com/org/repo/pull/42" in comment_body
+        assert "pr-created" in comment_body
 
     @pytest.mark.asyncio
     async def test_report_remediation_success(self):
@@ -85,7 +85,7 @@ class TestPipelineProgressReporter:
         await reporter.report_milestone("remediation", "success", summary="Fixed lint errors")
         client.update_issue_state.assert_awaited_once()
         comment_body = client.add_comment.call_args.args[1]
-        assert "Fixed lint errors" in comment_body
+        assert "remediation" in comment_body
 
     def test_from_config(self):
         config = LinearConfig(

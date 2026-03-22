@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .mapper import PipelineResult, map_pipeline_state_to_linear, pipeline_result_to_linear_comment
+from .mapper import map_pipeline_state_to_linear
 from .state_machine import BLOCKED_STATE, StateMachine
 
 if TYPE_CHECKING:
@@ -47,33 +47,24 @@ class PipelineProgressReporter:
             attempt_count: Retry attempt number, used in Blocked diagnostic comments.
         """
         target_state = map_pipeline_state_to_linear(stage, status)
-
-        milestone_body = pipeline_result_to_linear_comment(
-            PipelineResult(
-                stage=stage,
-                status=status,
-                pr_url=pr_url,
-                summary=summary,
-                errors=errors,
-            )
-        )
+        outcome = "PASS" if status == "success" else "FAIL"
 
         if target_state == BLOCKED_STATE:
-            raw_error = "\n".join(errors) if errors else (summary or "Unknown error")
+            raw_parts = ([summary] if summary else []) + (errors or [])
+            raw_error = "\n".join(raw_parts) if raw_parts else "Unknown error"
             await self._sm.transition_to_blocked(
                 actor="orchestrator",
                 stage=stage,
                 error_output=raw_error,
                 attempt_count=attempt_count,
                 from_state=None,
-                milestone_body=milestone_body,
             )
         else:
             await self._sm.transition(
                 to_state=target_state,
                 actor="orchestrator",
                 stage=stage,
-                milestone_body=milestone_body,
+                outcome=outcome,
             )
 
     @classmethod
