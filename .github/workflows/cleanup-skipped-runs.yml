@@ -1,4 +1,4 @@
-name: Cleanup skipped Claude Code runs
+name: Cleanup skipped workflow runs
 
 on:
   schedule:
@@ -11,12 +11,19 @@ jobs:
     permissions:
       actions: write
     steps:
-      - name: Delete skipped Claude Code runs older than 24h
+      - name: Delete skipped runs older than 24h
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api "repos/${{ github.repository }}/actions/workflows/claude.yml/runs" \
-            --paginate \
-            --jq '.workflow_runs[] | select(.conclusion == "skipped") | .id' \
-          | xargs -r -I{} gh api --method DELETE \
-            "repos/${{ github.repository }}/actions/runs/{}"
+          # Workflows that generate skipped/noise runs and should be cleaned up daily.
+          # claude.yml             - fires on issue_comment/pr_review_comment even for bots (skip via if:)
+          # local-ci-remediate.yml - fires on every check_suite; skips when conclusion != failure
+          # local-pr-describe.yml  - fires on every PR open; skips when body is already long enough
+          for WORKFLOW in claude.yml local-ci-remediate.yml local-pr-describe.yml; do
+            echo "Cleaning skipped runs for $WORKFLOW..."
+            gh api "repos/${{ github.repository }}/actions/workflows/${WORKFLOW}/runs" \
+              --paginate \
+              --jq '.workflow_runs[] | select(.conclusion == "skipped") | .id' \
+            | xargs -r -I{} gh api --method DELETE \
+              "repos/${{ github.repository }}/actions/runs/{}" && true
+          done
