@@ -8,7 +8,6 @@
     "test": "node --experimental-vm-modules node_modules/.bin/jest --coverage"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^2.1.81",
     "@linear/sdk": "^78.0.0",
     "@octokit/rest": "^22.0.1"
   },
