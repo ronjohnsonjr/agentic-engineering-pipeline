@@ -4,11 +4,17 @@ import logging
 import os
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+app = FastAPI(title="Linear Webhook Bridge")
+
+
+@app.get("/health")
+async def health() -> dict:
+    return {"status": "ok"}
 
 GITHUB_API_URL = "https://api.github.com"
 
@@ -151,3 +157,6 @@ async def linear_webhook(
 
     background_tasks.add_task(_handle_payload, payload)
     return {"ok": True}
+
+
+app.include_router(router)
