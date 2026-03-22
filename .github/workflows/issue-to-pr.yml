@@ -24,7 +24,7 @@ on:
       claude_args:
         description: "Additional CLI args passed to claude-code-action"
         type: string
-        default: "--dangerously-skip-permissions --max-turns 20"
+        default: "--dangerously-skip-permissions --max-turns 40"
       mcp_config:
         description: "JSON MCP server config (e.g., for Linear integration)"
         type: string
@@ -55,6 +55,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          show_full_output: true
           additional_permissions: |
             actions: read
           claude_args: ${{ inputs.claude_args }}
