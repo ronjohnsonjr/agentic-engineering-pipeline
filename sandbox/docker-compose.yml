@@ -11,8 +11,6 @@
 # Network access: agents can reach public package registries and documentation
 # sites. No production databases or internal services are attached.
 
-version: "3.9"
-
 services:
   # ── Docker-in-Docker daemon ─────────────────────────────────────────────────
   dind:
@@ -25,6 +23,11 @@ services:
     volumes:
       - dind-storage:/var/lib/docker
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # ── Agent execution environment ─────────────────────────────────────────────
   agent:
@@ -32,7 +35,8 @@ services:
       context: ..
       dockerfile: sandbox/Dockerfile
     depends_on:
-      - dind
+      dind:
+        condition: service_healthy
     environment:
       # Point Docker CLI at the DinD daemon; TLS disabled for simplicity.
       DOCKER_HOST: "tcp://dind:2375"

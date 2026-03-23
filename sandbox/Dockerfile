@@ -48,8 +48,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Node.js 20 LTS + npm ──────────────────────────────────────────────────────
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+RUN curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /usr/share/keyrings/nodesource-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/nodesource-keyring.gpg] \
+        https://deb.nodesource.com/node_20.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python 3 + pip ───────────────────────────────────────────────────────────
@@ -65,8 +69,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --no-modify-path --default-toolchain stable \
-    && chmod -R a+w /usr/local/rustup /usr/local/cargo
+        | sh -s -- -y --no-modify-path --default-toolchain stable
 
 # ── Docker CLI (daemon provided via DinD sidecar in docker-compose.yml) ──────
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
@@ -79,10 +82,11 @@ RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
 
 # ── Non-root user ─────────────────────────────────────────────────────────────
 RUN useradd -m -s /bin/bash agent \
-    && usermod -aG docker agent 2>/dev/null || true
+    && usermod -aG docker agent 2>/dev/null || true \
+    && chown -R agent:agent /usr/local/rustup /usr/local/cargo
 
 # ── Git safe-directory config (avoids dubious ownership errors) ──────────────
-RUN git config --system safe.directory '*'
+RUN git config --system safe.directory /workspace
 
 # ── Default workspace ─────────────────────────────────────────────────────────
 WORKDIR /workspace
