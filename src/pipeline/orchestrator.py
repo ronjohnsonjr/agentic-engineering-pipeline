@@ -78,7 +78,7 @@ class AgentRunState:
     """
 
     stage: str
-    status: Literal["running", "complete", "failed", "timeout", "skipped"]
+    status: Literal["running", "complete", "changes_required", "failed", "timeout", "skipped"]
     output: str = ""
     error: str = ""
     attempt: int = 1
@@ -202,7 +202,7 @@ class Orchestrator:
         before the next stage begins. On any gate failure or unrecoverable
         error the pipeline halts and returns a ``HALTED`` result.
         """
-        run = PipelineRun(issue=issue_text[:120])
+        run = PipelineRun(issue=issue_text[:120] + ("..." if len(issue_text) > 120 else ""))
 
         # ------------------------------------------------------------------
         # Stage 1 — Clarify
@@ -408,10 +408,9 @@ class Orchestrator:
                         f"Last error: {exc}",
                     )
                     return False
-                # Carry the error context forward so the next attempt can fix it
-                prompt = f"{prompt}\n\nPrevious attempt failed:\n{exc}\nPlease fix and retry."
-        run.halt("programmer", f"Programmer exhausted {self._max_verify} attempts")
-        return False
+                # Carry the error context forward so the next attempt can fix it.
+                # Wrap in a delimiter so the model treats it as plain error text.
+                prompt = f"{prompt}\n\n<error>\n{str(exc)[:500]}\n</error>\nPlease fix the error above and retry."
 
     async def _run_test_team(self, run: PipelineRun) -> bool:
         """Run unit, backend, and frontend testers in parallel.
@@ -505,6 +504,11 @@ class Orchestrator:
             # links ([text](url)), angle-bracket wrapping, etc.
             match = re.search(r"https://github\.com[^\s\)\]>\"']+/pull/\d+", output)
             pr_url: str | None = match.group(0).rstrip(".,)") if match else None
+            if pr_url is None:
+                state.status = "failed"
+                state.error = "No pull request URL found in output"
+                run.halt("pr-creator", "PR creator did not produce a pull request URL")
+                return False
             state.status = "complete"
             run.pr_url = pr_url
             run.complete("pr-creator")
@@ -556,7 +560,7 @@ class Orchestrator:
                 return
 
             # Gate not passed — run remediator then loop back to reviewer
-            reviewer_state.status = "complete"
+            reviewer_state.status = "changes_required"
             run.complete(f"reviewer (cycle {cycle})")
 
             rem_state = AgentRunState(

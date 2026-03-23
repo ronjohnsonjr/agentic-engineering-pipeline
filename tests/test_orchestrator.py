@@ -7,6 +7,7 @@ Async tests use pytest-asyncio (asyncio_mode = "auto" in pyproject.toml).
 from __future__ import annotations
 
 import asyncio
+import time
 from unittest.mock import AsyncMock
 
 import pytest
@@ -502,8 +503,6 @@ class TestTestTeam:
 
     async def test_all_three_testers_called_in_parallel(self):
         """Verify all three testers are awaited even if one is slower."""
-        import time
-
         call_counts: dict[str, int] = {"unit": 0, "backend": 0, "frontend": 0}
 
         async def _timed_unit(prompt: str) -> str:
@@ -647,7 +646,6 @@ class TestReviewCycle:
 class TestStatePersistence:
     async def test_all_stage_states_recorded(self):
         orc = _make_orchestrator()
-        run_obj = orc  # access the run internals via result
         result = await orc.run("issue")
         # Result has completed stages
         assert len(result.stages_completed) > 0
