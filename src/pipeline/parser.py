@@ -24,10 +24,12 @@ from src.pipeline.briefs import (
 # Built once from EnrichedContext.model_fields so that any new field added to
 # the model is automatically included in the issue_body lookahead — no manual
 # sync required. `k.replace("_", " ").title()` produces title-case labels;
-# `re.IGNORECASE` compensates for case mismatches (e.g. "Linear Issue Id" vs
-# "Linear Issue ID"). See parse_enriched_context for usage.
+# `_LABEL_OVERRIDES` corrects fields where .title() produces the wrong result
+# (e.g. "Linear Issue Id" instead of "Linear Issue ID"). See
+# parse_enriched_context for usage.
+_LABEL_OVERRIDES: dict[str, str] = {"linear_issue_id": "Linear Issue ID"}
 _ENRICHED_CONTEXT_FIELD_LABELS = "|".join(
-    re.escape(k.replace("_", " ").title())
+    re.escape(_LABEL_OVERRIDES.get(k, k.replace("_", " ").title()))
     for k in EnrichedContext.model_fields
     if k != "issue_body"
 )

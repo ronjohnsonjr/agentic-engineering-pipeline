@@ -221,6 +221,7 @@ def test_enriched_context_to_context_payload_json_escapes_non_ascii():
     json_str = ctx.to_context_payload_json()
     assert "\\u" in json_str  # non-ASCII must be escaped
     assert "Ré" not in json_str
+    assert json.loads(json_str)["issue_title"] == "Ré"  # encoding is lossless
 
 
 def test_enriched_context_payload_contains_all_ac_fields():
