@@ -16,6 +16,7 @@ from src.pipeline.briefs import (
     ReviewVerdict,
     TestResult,
 )
+from src.pipeline.clarification import CONFIDENCE_THRESHOLD as CLARIFIER_CONFIDENCE_THRESHOLD
 
 if TYPE_CHECKING:
     from src.integrations.linear.progress import PipelineProgressReporter
@@ -26,11 +27,13 @@ async def validate_clarifier_gate(
     *,
     reporter: "PipelineProgressReporter | None" = None,
 ) -> bool:
-    """Return True only when the clarifier verdict is CLEAR.
+    """Return True only when the clarifier verdict is CLEAR and confidence >= threshold.
 
-    Research cannot start until this gate passes.
+    Research cannot start until this gate passes. A CLEAR verdict with a
+    confidence score below CLARIFIER_CONFIDENCE_THRESHOLD is treated as
+    NEEDS_CLARITY and requires human clarification before proceeding.
     """
-    passed = brief.verdict == "CLEAR"
+    passed = brief.verdict == "CLEAR" and brief.confidence_score >= CLARIFIER_CONFIDENCE_THRESHOLD
     if reporter is not None:
         status = "success" if passed else "failure"
         if passed:
@@ -53,7 +56,7 @@ async def validate_research_gate(
 
     Planner cannot start until this gate passes.
     """
-    passed = bool(brief.summary.strip()) and bool(brief.relevant_files)
+    passed = bool(brief.summary.strip()) and bool(brief.relevant_files or brief.affected_files)
     if reporter is not None:
         status = "success" if passed else "failure"
         if passed:
@@ -63,7 +66,7 @@ async def validate_research_gate(
             errors: list[str] = []
             if not brief.summary.strip():
                 errors.append("Research summary is missing or blank")
-            if not brief.relevant_files:
+            if not (brief.relevant_files or brief.affected_files):
                 errors.append("No relevant files were identified for research")
             await reporter.report_milestone("research", status, errors=errors)
     return passed

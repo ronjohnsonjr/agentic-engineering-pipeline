@@ -253,8 +253,23 @@ def parse_research_brief(text: str) -> ResearchBrief:
         - src/foo.py
         - src/bar.py
 
+        Affected Files:
+        - src/foo.py:10-40 -- handles request routing
+
+        Interfaces:
+        - def handle_request(req: Request) -> Response
+
+        Existing Tests:
+        - tests/test_foo.py -- covers request routing
+
+        Patterns:
+        - Use dependency injection for all service objects (src/services.py:1-20)
+
         Risks:
         - Touching foo.py may break the bar integration.
+
+        Open Questions:
+        - Should the new endpoint require authentication?
     """
     body = _extract_section(text, "RESEARCH BRIEF")
     if not body:
@@ -266,7 +281,12 @@ def parse_research_brief(text: str) -> ResearchBrief:
         summary=summary,
         conventions=_sub_block(body, "Conventions"),
         relevant_files=_sub_block(body, "Relevant Files"),
+        affected_files=_sub_block(body, "Affected Files"),
+        interfaces=_sub_block(body, "Interfaces"),
+        existing_tests=_sub_block(body, "Existing Tests"),
+        patterns=_sub_block(body, "Patterns to Follow"),
         risks=_sub_block(body, "Risks"),
+        open_questions=_sub_block(body, "Open Questions for Planner"),
     )
 
 

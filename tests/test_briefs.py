@@ -252,7 +252,12 @@ def test_research_brief_minimal():
     assert brief.summary == "Found relevant files."
     assert brief.conventions == []
     assert brief.relevant_files == []
+    assert brief.affected_files == []
+    assert brief.interfaces == []
+    assert brief.existing_tests == []
+    assert brief.patterns == []
     assert brief.risks == []
+    assert brief.open_questions == []
 
 
 def test_research_brief_full():
@@ -260,17 +265,36 @@ def test_research_brief_full():
         summary="The codebase uses layered architecture.",
         conventions=["snake_case", "no global state"],
         relevant_files=["src/api.py", "src/models.py"],
+        affected_files=["src/api.py:10-40 -- handles routing"],
+        interfaces=["def handle(req: Request) -> Response"],
+        existing_tests=["tests/test_api.py -- covers routing"],
+        patterns=["Use dependency injection (src/services.py:1-20)"],
         risks=["Changing models may break serialisation"],
+        open_questions=["Should the endpoint require auth?"],
     )
     assert len(brief.conventions) == 2
     assert len(brief.relevant_files) == 2
+    assert len(brief.affected_files) == 1
+    assert len(brief.interfaces) == 1
+    assert len(brief.existing_tests) == 1
+    assert len(brief.patterns) == 1
     assert len(brief.risks) == 1
+    assert len(brief.open_questions) == 1
 
 
 def test_research_brief_empty_summary_is_valid():
     # Pydantic allows empty strings; gate validation enforces non-empty
     brief = ResearchBrief(summary="")
     assert brief.summary == ""
+
+
+def test_research_brief_new_fields_default_empty():
+    brief = ResearchBrief(summary="Minimal.", relevant_files=["src/foo.py"])
+    assert brief.affected_files == []
+    assert brief.interfaces == []
+    assert brief.existing_tests == []
+    assert brief.patterns == []
+    assert brief.open_questions == []
 
 
 # ---------------------------------------------------------------------------

@@ -75,7 +75,12 @@ class ResearchBrief(BaseModel):
     summary: str
     conventions: list[str] = Field(default_factory=list)
     relevant_files: list[str] = Field(default_factory=list)
+    affected_files: list[str] = Field(default_factory=list)
+    interfaces: list[str] = Field(default_factory=list)
+    existing_tests: list[str] = Field(default_factory=list)
+    patterns: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
 
 
 class PlanStep(BaseModel):

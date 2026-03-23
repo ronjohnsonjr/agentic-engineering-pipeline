@@ -31,7 +31,7 @@ permissions:
   actions: read
 
 # cancel-in-progress is false because the review pipeline has multiple
-# sequential sub-agents — killing a running job aborts remediation mid-step.
+# sequential sub-agents - killing a running job aborts remediation mid-step.
 concurrency:
   group: agentic-pr-review-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: false
