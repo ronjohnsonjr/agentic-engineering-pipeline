@@ -255,6 +255,7 @@ Pipeline Stage: Stage 1
     # appears at the start of a line and matches the lookahead alternation.
     # TODO: Fix by pre-stripping the issue body section before running
     # sub-block extraction, so embedded field-like labels can't escape.
+    # Tracked: https://github.com/ronjohnsonjr/agentic-engineering-pipeline/issues/84
     assert ctx.issue_body == "Background:"
     assert ctx.pipeline_stage == "Stage 1"
 

@@ -55,6 +55,11 @@ class EnrichedContext(BaseModel):
         Keys are alphabetically sorted (via :meth:`to_context_payload`), making
         this string suitable for hashing, cache keys, and byte-for-byte comparison
         across identical instances.
+
+        Non-ASCII characters (e.g. in ``issue_body`` or ``issue_title``) are
+        escaped as ``\\uXXXX`` sequences (``ensure_ascii=True`` default).  The
+        output is still byte-for-byte stable for identical inputs; callers who
+        need human-readable non-ASCII text should decode via :func:`json.loads`.
         """
         return json.dumps(self.to_context_payload(), separators=(",", ":"))
 
