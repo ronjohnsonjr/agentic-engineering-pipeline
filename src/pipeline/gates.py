@@ -10,13 +10,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.pipeline.briefs import (
+    CLARIFIER_CONFIDENCE_THRESHOLD,
     ClarifierBrief,
     ImplementationPlan,
     ResearchBrief,
     ReviewVerdict,
     TestResult,
 )
-from src.pipeline.clarification import CONFIDENCE_THRESHOLD as CLARIFIER_CONFIDENCE_THRESHOLD
 
 if TYPE_CHECKING:
     from src.integrations.linear.progress import PipelineProgressReporter

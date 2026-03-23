@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from src.pipeline.briefs import ClarifierBrief
+from src.pipeline.briefs import CLARIFIER_CONFIDENCE_THRESHOLD, ClarifierBrief
 from src.integrations.linear.state_machine import (
     NEEDS_CLARIFICATION_STATE,
     StateMachine,
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from src.integrations.linear.client import LinearClient
 
 
-CONFIDENCE_THRESHOLD: float = 0.85
+CONFIDENCE_THRESHOLD: float = CLARIFIER_CONFIDENCE_THRESHOLD
 MAX_CLARIFICATION_ROUNDS: int = 2
 
 
@@ -127,6 +127,11 @@ class ClarificationLoop:
                 escalated=True,
             )
 
+        if round_num != len(self._history) + 1:
+            raise ValueError(
+                f"round_num {round_num} does not match history length "
+                f"{len(self._history)} + 1; rounds must be called sequentially."
+            )
         await self._post_questions(brief, round_num)
         return ClarificationResult(
             resolved=False,
@@ -146,6 +151,7 @@ class ClarificationLoop:
             for c in comments
             if "clarification" in c.get("body", "").lower()
             and not c.get("body", "").startswith("**Clarification Required**")
+            and not c.get("body", "").startswith("**Escalation:")
         ]
 
     # ------------------------------------------------------------------
@@ -204,11 +210,19 @@ class ClarificationLoop:
             f"- Confidence Score: `{brief.confidence_score:.2f}` "
             f"(threshold: `{self.CONFIDENCE_THRESHOLD}`)",
             "",
-            "The following questions must be answered before implementation can proceed:",
-            "",
         ]
-        for i, question in enumerate(brief.questions, start=1):
-            lines.append(f"{i}. {question}")
+        if brief.questions:
+            lines += [
+                "The following questions must be answered before implementation can proceed:",
+                "",
+            ]
+            for i, question in enumerate(brief.questions, start=1):
+                lines.append(f"{i}. {question}")
+        else:
+            lines.append(
+                "The confidence score is below the required threshold — "
+                "please add more detail to the issue description."
+            )
         lines += [
             "",
             "_Please reply to this comment with answers. "

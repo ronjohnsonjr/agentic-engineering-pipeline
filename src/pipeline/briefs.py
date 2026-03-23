@@ -6,6 +6,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# Single source of truth for the clarifier confidence threshold.
+# Both clarification.py and gates.py import from here to avoid duplication.
+CLARIFIER_CONFIDENCE_THRESHOLD: float = 0.85
+
 
 class EnrichedContext(BaseModel):
     """Additional context extracted from a Linear issue and architectural docs."""

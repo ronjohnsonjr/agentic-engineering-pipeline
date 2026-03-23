@@ -192,6 +192,10 @@ async def test_run_round_includes_confidence_score_in_comment():
 @pytest.mark.asyncio
 async def test_run_round_includes_round_number_in_comment():
     loop, client = _make_loop()
+    # Seed history so round_num=2 is consistent with the sequential-round assertion.
+    loop._history.append(
+        ClarificationRound(round_number=1, questions=["Q?"], confidence_score=0.5)
+    )
     brief = _needs_clarity_brief()
     await loop.run_round(brief, round_num=2)
     questions_comment = client.add_comment.call_args_list[0].args[1]
@@ -317,17 +321,17 @@ async def test_get_clarification_history_filters_relevant_comments():
     client = _make_client()
     client.get_issue_comments = AsyncMock(
         return_value=[
-            {"id": "c1", "body": "Clarification Required (round 1/2)", "createdAt": "2026-01-01T00:00:00Z", "user": {"id": "u1", "name": "bot"}},
+            {"id": "c1", "body": "**Clarification Required** _(round 1/2)_\nWhat is scope?", "createdAt": "2026-01-01T00:00:00Z", "user": {"id": "u1", "name": "bot"}},
             {"id": "c2", "body": "LGTM, let's proceed", "createdAt": "2026-01-01T01:00:00Z", "user": {"id": "u2", "name": "human"}},
             {"id": "c3", "body": "Answered the clarification questions above", "createdAt": "2026-01-01T02:00:00Z", "user": {"id": "u2", "name": "human"}},
         ]
     )
     loop = ClarificationLoop(client=client, issue_id="issue-42", team_id="team-1")
     history = await loop.get_clarification_history()
-    # Comments c1 and c3 contain "clarification"
-    assert len(history) == 2
-    assert history[0]["id"] == "c1"
-    assert history[1]["id"] == "c3"
+    # c1 is excluded (bot comment starting with "**Clarification Required**")
+    # c3 contains "clarification" and is a genuine human reply
+    assert len(history) == 1
+    assert history[0]["id"] == "c3"
 
 
 @pytest.mark.asyncio

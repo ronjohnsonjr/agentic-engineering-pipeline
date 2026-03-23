@@ -89,24 +89,33 @@ class LinearClient:
 
     async def get_issue_comments(self, issue_id: str) -> list[dict]:
         query = """
-        query GetIssueComments($id: String!) {
+        query GetIssueComments($id: String!, $after: String) {
           issue(id: $id) {
-            comments(first: 100) {
+            comments(first: 100, after: $after) {
               nodes {
                 id
                 body
                 createdAt
                 user { id name }
               }
+              pageInfo { hasNextPage endCursor }
             }
           }
         }
         """
-        data = await self._query(query, {"id": issue_id})
-        issue = data["issue"]
-        if issue is None:
-            return []
-        return issue["comments"]["nodes"]
+        nodes: list[dict] = []
+        cursor: str | None = None
+        while True:
+            data = await self._query(query, {"id": issue_id, "after": cursor})
+            issue = data["issue"]
+            if issue is None:
+                return []
+            page = issue["comments"]
+            nodes.extend(page["nodes"])
+            if not page["pageInfo"]["hasNextPage"]:
+                break
+            cursor = page["pageInfo"]["endCursor"]
+        return nodes
 
     async def get_team_states(self, team_id: str) -> list[dict]:
         query = """
