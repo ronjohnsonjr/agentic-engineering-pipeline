@@ -2,7 +2,7 @@
 
 Coordinates the deterministic stage sequence:
   Clarifier → Researcher → Planner → Programmer
-  → [Unit, Backend, Frontend] in parallel (feedback loop: failures → Programmer)
+  → [Unit, Backend, Frontend] in parallel (failure → pipeline halts)
   → PR Creator → AI Reviewer (feedback loop: changes required → Remediator → Reviewer)
 
 Each stage runs under a configurable per-agent timeout. Full run state (stage,
@@ -22,7 +22,6 @@ from src.pipeline.briefs import (
     ImplementationPlan,
     PipelineResult,
     ResearchBrief,
-    ReviewVerdict,
     TestResult,
 )
 from src.pipeline.gates import (
@@ -277,9 +276,10 @@ class Orchestrator:
             state.output = output
             brief = parse_clarifier_brief(output)
             if not await validate_clarifier_gate(brief):
+                questions_str = "; ".join(brief.questions)
                 state.status = "failed"
-                state.error = f"NEEDS_CLARITY: {brief.questions}"
-                run.halt("clarifier", f"Clarifier returned NEEDS_CLARITY: {brief.questions}")
+                state.error = f"NEEDS_CLARITY: {questions_str}"
+                run.halt("clarifier", f"Clarifier returned NEEDS_CLARITY: {questions_str}")
                 return None
             state.status = "complete"
             run.complete("clarifier")
@@ -385,7 +385,7 @@ class Orchestrator:
                     if attempt >= self._max_verify:
                         run.halt("programmer", "Programmer returned empty output after all attempts")
                         return False
-                    prompt = f"{prompt}\n\nPrevious attempt returned empty output. Please provide implementation."
+                    prompt = f"{prompt}\n\n<error>\nPrevious attempt returned empty output.\n</error>\nPlease provide implementation."
                     continue
                 state.status = "complete"
                 run.complete(f"programmer (attempt {attempt})")
@@ -397,7 +397,7 @@ class Orchestrator:
                     run.halt("programmer", f"Programmer timed out after {attempt} attempts")
                     return False
                 # pass the timeout error as context for the next attempt
-                prompt = f"{prompt}\n\nPrevious attempt timed out. Please retry."
+                prompt = f"{prompt}\n\n<error>\nPrevious attempt timed out.\n</error>\nPlease retry."
             except Exception as exc:  # noqa: BLE001
                 state.status = "failed"
                 state.error = str(exc)
@@ -438,7 +438,7 @@ class Orchestrator:
                 self._call_agent(self._backend_tester, "Run backend/integration tests.")
             )
         else:
-            run.skip("backend-tester", "no API or database changes detected")
+            run.skip("backend-tester", "disabled by configuration")
 
         if self._run_frontend:
             frontend_state = AgentRunState(stage="frontend-tester", status="running")
@@ -448,7 +448,7 @@ class Orchestrator:
                 self._call_agent(self._frontend_tester, "Run frontend/e2e tests.")
             )
         else:
-            run.skip("frontend-tester", "no UI surface changes detected")
+            run.skip("frontend-tester", "disabled by configuration")
 
         # Collect results (order preserved by dict insertion)
         results: list[TestResult] = []
@@ -502,6 +502,8 @@ class Orchestrator:
             state.output = output
             # Extract PR URL from the output; regex handles plain URLs, markdown
             # links ([text](url)), angle-bracket wrapping, etc.
+            # Note: the regex matches github.com only; GitHub Enterprise hosts
+            # (e.g. github.mycompany.com) will not match and pr_url will be None.
             match = re.search(r"https://github\.com[^\s\)\]>\"']+/pull/\d+", output)
             pr_url: str | None = match.group(0).rstrip(".,)") if match else None
             if pr_url is None:
@@ -561,7 +563,13 @@ class Orchestrator:
 
             # Gate not passed — run remediator then loop back to reviewer
             reviewer_state.status = "changes_required"
-            run.complete(f"reviewer (cycle {cycle})")
+            # Do not call run.complete() here: changes_required is not a successful
+            # completion; marking it so would mislead observers reading completed_stages.
+
+            # Skip the remediator on the final cycle — there is no subsequent reviewer
+            # pass to re-evaluate the fixes, so running it just wastes an agent call.
+            if cycle >= self._max_review:
+                break
 
             rem_state = AgentRunState(
                 stage="remediator", status="running", attempt=cycle
