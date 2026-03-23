@@ -21,6 +21,17 @@ from src.pipeline.briefs import (
     TestResult,
 )
 
+# Built once from EnrichedContext.model_fields so that any new field added to
+# the model is automatically included in the issue_body lookahead — no manual
+# sync required. `k.replace("_", " ").title()` produces title-case labels;
+# `re.IGNORECASE` compensates for case mismatches (e.g. "Linear Issue Id" vs
+# "Linear Issue ID"). See parse_enriched_context for usage.
+_ENRICHED_CONTEXT_FIELD_LABELS = "|".join(
+    re.escape(k.replace("_", " ").title())
+    for k in EnrichedContext.model_fields
+    if k != "issue_body"
+)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -120,25 +131,17 @@ def parse_enriched_context(text: str) -> EnrichedContext:
 
     # Issue Body may span multiple lines; capture everything after "Issue Body:"
     # up to the next field or bullet section.
-    # The lookahead alternation is built from EnrichedContext.model_fields so that
-    # any new field added to the model is automatically included here — keeping the
-    # two in sync without a manual update.
-    # NOTE: field names are converted via `k.replace("_", " ").title()`, which
-    # produces title-case labels (e.g. "linear_issue_id" → "Linear Issue Id").
-    # The `re.IGNORECASE` flag compensates for any case discrepancies between
-    # the generated label and the actual text (e.g. "Linear Issue ID" is still
-    # matched). If a future field name does not map cleanly to its text label via
-    # title-case (e.g. requiring "Issue ID" not "Issue Id"), `re.IGNORECASE` will
-    # still match but a developer reading the generated regex may find it
-    # confusing. If that becomes a maintenance pain point, consider replacing this
-    # with an explicit `FIELD_LABELS: ClassVar[list[str]]` on `EnrichedContext`.
-    _other_field_labels = "|".join(
-        re.escape(k.replace("_", " ").title())
-        for k in EnrichedContext.model_fields
-        if k != "issue_body"
-    )
+    # _ENRICHED_CONTEXT_FIELD_LABELS is a module-level constant built from
+    # EnrichedContext.model_fields, so any new field is automatically included.
+    # NOTE: known limitation — the lookahead stops at any line that *starts with*
+    # a known field label, even if that line is part of the issue body text
+    # (e.g. an issue body that begins a line with "Linked Documents: …"). In
+    # practice, structured context payloads do not embed field-like labels at the
+    # start of a body line. If this becomes a real-world problem, replace the
+    # programmatic alternation with an explicit `ClassVar[list[str]]` on
+    # `EnrichedContext` that maps field keys to their canonical text labels.
     issue_body_match = re.search(
-        rf"Issue Body\s*:\s*(.+?)(?=\n(?:{_other_field_labels})\s*:|\Z)",
+        rf"Issue Body\s*:\s*(.+?)(?=\n(?:{_ENRICHED_CONTEXT_FIELD_LABELS})\s*:|\Z)",
         body,
         re.IGNORECASE | re.DOTALL,
     )
@@ -246,9 +249,9 @@ def parse_research_brief(text: str) -> ResearchBrief:
 
     def _sub_block(label: str) -> list[str]:
         match = re.search(
-            rf"{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+            rf"^{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
             body,
-            re.IGNORECASE,
+            re.IGNORECASE | re.MULTILINE,
         )
         return _bullet_list(match.group(1)) if match else []
 
@@ -315,9 +318,9 @@ def parse_implementation_plan(text: str) -> ImplementationPlan:
 
     def _sub_block(label: str) -> list[str]:
         match = re.search(
-            rf"{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+            rf"^{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
             body,
-            re.IGNORECASE,
+            re.IGNORECASE | re.MULTILINE,
         )
         return _bullet_list(match.group(1)) if match else []
 
@@ -400,9 +403,9 @@ def parse_review_verdict(text: str) -> ReviewVerdict:
 
     def _sub_block(label: str) -> list[str]:
         match = re.search(
-            rf"{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+            rf"^{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
             body,
-            re.IGNORECASE,
+            re.IGNORECASE | re.MULTILINE,
         )
         return _bullet_list(match.group(1)) if match else []
 

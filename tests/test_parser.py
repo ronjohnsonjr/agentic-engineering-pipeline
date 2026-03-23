@@ -236,6 +236,27 @@ Parsed Requirements:
     assert ctx.pipeline_stage == "Stage 1"
 
 
+def test_parse_enriched_context_issue_body_truncated_at_known_field_label():
+    """Known limitation: issue_body is truncated when a line starts with a known field label.
+
+    The lookahead stops at any line whose start matches a field label from
+    EnrichedContext.model_fields, even if that line is part of the issue body
+    text. Pin this behaviour so any future fix is visible.
+    """
+    text = """\
+## ENRICHED CONTEXT
+
+Issue Body: Background:
+Linked Documents: http://prior-ticket
+Pipeline Stage: Stage 1
+"""
+    ctx = parse_enriched_context(text)
+    # The issue body is truncated before "Linked Documents:" because that label
+    # appears at the start of a line and matches the lookahead alternation.
+    assert ctx.issue_body == "Background:"
+    assert ctx.pipeline_stage == "Stage 1"
+
+
 def test_parse_enriched_context_partial_fields():
     text = """\
 ## ENRICHED CONTEXT

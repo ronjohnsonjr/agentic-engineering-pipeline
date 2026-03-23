@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -38,7 +38,7 @@ class EnrichedContext(BaseModel):
     labels: list[str] = Field(default_factory=list)
     pipeline_stage: str = ""
 
-    def to_context_payload(self) -> dict:
+    def to_context_payload(self) -> dict[str, Any]:
         """Return a JSON-serialisable dict of the full context payload.
 
         This is the canonical form passed between pipeline agents.  The output

@@ -157,6 +157,10 @@ def test_enriched_context_full_payload_fields():
     assert ctx.dependencies == ["AGE-87"]
     assert ctx.related_issues == ["AGE-87"]
     assert ctx.relevant_code_paths == ["src/pipeline/briefs.py"]
+    assert ctx.architectural_constraints == ["Must not modify examples/consumer-workflows/"]
+    assert ctx.assumptions == ["No breaking API changes required"]
+    assert ctx.labels == ["local", "phase-1"]
+    assert ctx.pipeline_stage == "Clarifier (Stage 1)"
 
 
 def test_enriched_context_to_context_payload_returns_dict():
