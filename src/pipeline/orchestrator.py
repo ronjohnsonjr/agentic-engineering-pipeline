@@ -22,7 +22,6 @@ from src.pipeline.briefs import (
     ImplementationPlan,
     PipelineResult,
     ResearchBrief,
-    ReviewVerdict,
     TestResult,
 )
 from src.pipeline.gates import (
@@ -513,15 +512,20 @@ class Orchestrator:
                     failed_details.append(f"{name}: {exc}")
         finally:
             # Cancel any tasks that have not yet completed (e.g. if CancelledError
-            # propagates from an outer scope and exits this loop early).
-            for t in tasks.values():
-                if not t.done():
-                    t.cancel()
+            # propagates from an outer scope and exits this loop early), then await
+            # them so their CancelledError is retrieved and resources are released.
+            pending = [t for t in tasks.values() if not t.done()]
+            for t in pending:
+                t.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
 
         if not await validate_test_gate(results):
-            # Always record the gate-failure reason so it appears in the halt message
-            # even when individual tasks also failed.
-            failed_details.append("test gate validation failed: no results produced")
+            # Only append the gate-failure note when no per-task results were produced
+            # (i.e. every tester timed out or raised before returning output).  When
+            # results exist but some failed, the per-task details already cover it.
+            if not results:
+                failed_details.append("test gate validation failed: no results produced")
             all_passed = False
 
         if not all_passed:
