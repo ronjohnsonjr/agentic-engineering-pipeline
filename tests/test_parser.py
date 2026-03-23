@@ -772,3 +772,107 @@ def test_parse_pipeline_result_invalid_status():
     text = "## PIPELINE RESULT\n\nStatus: RUNNING\nIssue: #1\n"
     with pytest.raises(ValueError, match="Unrecognised pipeline status"):
         parse_pipeline_result(text)
+
+
+# ---------------------------------------------------------------------------
+# _sub_block blank-line behaviour regression tests
+# These pin the behaviour introduced when _sub_block gained optional blank-line
+# tolerance ((?:\s*\n)*) and line-start anchoring (^ + re.MULTILINE). One test
+# per affected parser ensures future refactors don't silently regress.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_research_brief_blank_line_before_bullets():
+    """_sub_block must capture bullets when a blank line follows the label header."""
+    text = """\
+## RESEARCH BRIEF
+
+Summary: Compact codebase.
+
+Conventions:
+
+- snake_case identifiers
+- One class per module
+
+Relevant Files:
+- src/main.py
+"""
+    brief = parse_research_brief(text)
+    assert brief.conventions == ["snake_case identifiers", "One class per module"]
+    assert brief.relevant_files == ["src/main.py"]
+
+
+def test_parse_research_brief_label_mid_sentence_not_matched():
+    """_sub_block must not match a label string that appears mid-sentence in summary."""
+    text = """\
+## RESEARCH BRIEF
+
+Summary: See Conventions: they are important.
+
+Conventions:
+- Real convention
+"""
+    brief = parse_research_brief(text)
+    assert brief.conventions == ["Real convention"]
+
+
+def test_parse_implementation_plan_blank_line_before_out_of_scope():
+    """_sub_block must capture Out of Scope bullets with a blank line after the label."""
+    text = """\
+## IMPLEMENTATION PLAN
+
+Issue: #99
+
+Steps:
+1. Do the thing
+
+Out of Scope:
+
+- No migrations
+- No frontend work
+
+Risks:
+- Minor breakage possible
+"""
+    plan = parse_implementation_plan(text)
+    assert plan.out_of_scope == ["No migrations", "No frontend work"]
+    assert len(plan.risks) == 1
+
+
+def test_parse_review_verdict_blank_line_before_blocking():
+    """_sub_block must capture Blocking items with a blank line after the label."""
+    text = """\
+## REVIEW VERDICT
+
+Verdict: CHANGES_REQUIRED
+Cycle: 1
+
+Blocking:
+
+- Missing null check
+- Unhandled edge case
+
+Suggestions:
+- Add docstring
+"""
+    verdict = parse_review_verdict(text)
+    assert verdict.blocking == ["Missing null check", "Unhandled edge case"]
+    assert verdict.suggestions == ["Add docstring"]
+
+
+def test_parse_clarifier_brief_blank_line_before_questions():
+    """parse_clarifier_brief fallback must handle a blank line between Questions: and bullets."""
+    text = """\
+## CLARIFIER BRIEF
+
+Verdict: NEEDS_CLARITY
+
+Questions:
+
+- What is the output format?
+- Who is the consumer?
+"""
+    brief = parse_clarifier_brief(text)
+    assert brief.verdict == "NEEDS_CLARITY"
+    assert "What is the output format?" in brief.questions
+    assert "Who is the consumer?" in brief.questions

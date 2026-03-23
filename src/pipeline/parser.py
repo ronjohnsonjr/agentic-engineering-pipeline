@@ -27,6 +27,12 @@ from src.pipeline.briefs import (
 # `_LABEL_OVERRIDES` corrects fields where .title() produces the wrong result
 # (e.g. "Linear Issue Id" instead of "Linear Issue ID"). See
 # parse_enriched_context for usage.
+#
+# IMPORTANT — alternation order is load-bearing: the regex engine picks the
+# *first* alternative that matches, so labels that are prefixes of longer
+# labels must not appear before those longer labels. `model_fields` preserves
+# the field declaration order in EnrichedContext, and that order ensures no
+# label is a prefix of a later one. Do not sort or reorder these labels.
 _LABEL_OVERRIDES: dict[str, str] = {"linear_issue_id": "Linear Issue ID"}
 _ENRICHED_CONTEXT_FIELD_LABELS = "|".join(
     re.escape(_LABEL_OVERRIDES.get(k, k.replace("_", " ").title()))
@@ -217,15 +223,14 @@ def parse_clarifier_brief(text: str) -> ClarifierBrief:
     if raw_verdict not in ("CLEAR", "NEEDS_CLARITY"):
         raise ValueError(f"Unrecognised clarifier verdict: {raw_verdict!r}")
 
-    questions_block = _extract_section(body, "Questions") if "##" in body else ""
-    # Fall back to scanning for a Questions: label in the flat body
-    if not questions_block:
-        q_match = re.search(
-            r"Questions\s*:\s*\n((?:\s*[-*].+\n?)*)", body, re.IGNORECASE
-        )
-        questions_block = q_match.group(1) if q_match else ""
-
-    raw_questions = _bullet_list(questions_block)
+    if "##" in body:
+        questions_block = _extract_section(body, "Questions")
+        raw_questions = _bullet_list(questions_block)
+    else:
+        # Use _sub_block for the flat-format fallback so blank lines between
+        # "Questions:" and the first bullet are tolerated, and the label is
+        # anchored to the start of a line (preventing false matches mid-text).
+        raw_questions = _sub_block(body, "Questions")
     questions = [q for q in raw_questions if q.lower() not in ("none", "(none)")]
 
     enriched_context = parse_enriched_context(text)

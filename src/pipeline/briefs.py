@@ -46,6 +46,11 @@ class EnrichedContext(BaseModel):
         same dict, with keys in alphabetical order (matching
         :meth:`to_context_payload_json`).  For a string-serialisable,
         cache-key-safe representation use :meth:`to_context_payload_json`.
+
+        Note: keys are alphabetically sorted, intentionally differing from the
+        field declaration order in the class body.  Adding a new field to
+        :class:`EnrichedContext` will shift key positions in the sorted output
+        and thereby invalidate any cache entries keyed on the JSON form.
         """
         return dict(sorted(self.model_dump(mode="json").items()))
 
