@@ -276,7 +276,7 @@ class Orchestrator:
             output = await self._call_agent(self._clarifier, issue_text)
             state.output = output
             brief = parse_clarifier_brief(output)
-            if not validate_clarifier_gate(brief):
+            if not await validate_clarifier_gate(brief):
                 state.status = "failed"
                 state.error = f"NEEDS_CLARITY: {brief.questions}"
                 run.halt("clarifier", f"Clarifier returned NEEDS_CLARITY: {brief.questions}")
@@ -308,7 +308,7 @@ class Orchestrator:
             output = await self._call_agent(self._researcher, prompt)
             state.output = output
             brief = parse_research_brief(output)
-            if not validate_research_gate(brief):
+            if not await validate_research_gate(brief):
                 state.status = "failed"
                 state.error = "Research brief incomplete (missing summary or relevant files)"
                 run.halt("researcher", state.error)
@@ -343,7 +343,7 @@ class Orchestrator:
             output = await self._call_agent(self._planner, prompt)
             state.output = output
             plan = parse_implementation_plan(output)
-            if not validate_plan_gate(plan):
+            if not await validate_plan_gate(plan):
                 state.status = "failed"
                 state.error = "Implementation plan incomplete (missing issue or steps)"
                 run.halt("planner", state.error)
@@ -482,7 +482,7 @@ class Orchestrator:
                 all_passed = False
                 failed_details.append(f"{name}: {exc}")
 
-        if not validate_test_gate(results):
+        if not await validate_test_gate(results):
             if all_passed:
                 # Gate failed for a structural reason (e.g. no results produced)
                 # not already captured by the per-task loop — ensure the halt
@@ -543,7 +543,7 @@ class Orchestrator:
                 return
 
             try:
-                approved = validate_review_gate(verdict, cycle=cycle, max_cycles=self._max_review)
+                approved = await validate_review_gate(verdict, cycle=cycle, max_cycles=self._max_review)
             except ValueError as exc:
                 reviewer_state.status = "failed"
                 reviewer_state.error = str(exc)

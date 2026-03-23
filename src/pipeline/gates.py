@@ -16,7 +16,7 @@ from src.pipeline.briefs import (
 )
 
 
-def validate_clarifier_gate(brief: ClarifierBrief) -> bool:
+async def validate_clarifier_gate(brief: ClarifierBrief) -> bool:
     """Return True only when the clarifier verdict is CLEAR.
 
     Research cannot start until this gate passes.
@@ -24,7 +24,7 @@ def validate_clarifier_gate(brief: ClarifierBrief) -> bool:
     return brief.verdict == "CLEAR"
 
 
-def validate_research_gate(brief: ResearchBrief) -> bool:
+async def validate_research_gate(brief: ResearchBrief) -> bool:
     """Return True when the research brief contains a non-empty summary and at
     least one relevant file.
 
@@ -33,7 +33,7 @@ def validate_research_gate(brief: ResearchBrief) -> bool:
     return bool(brief.summary.strip()) and bool(brief.relevant_files)
 
 
-def validate_plan_gate(brief: ImplementationPlan) -> bool:
+async def validate_plan_gate(brief: ImplementationPlan) -> bool:
     """Return True when the plan references an issue and contains at least one
     step.
 
@@ -42,7 +42,7 @@ def validate_plan_gate(brief: ImplementationPlan) -> bool:
     return bool(brief.issue.strip()) and bool(brief.steps)
 
 
-def validate_test_gate(results: list[TestResult]) -> bool:
+async def validate_test_gate(results: list[TestResult]) -> bool:
     """Return True only when every test result in *results* passed.
 
     PR creation cannot start until this gate passes. An empty list is treated
@@ -53,7 +53,7 @@ def validate_test_gate(results: list[TestResult]) -> bool:
     return all(r.passed for r in results)
 
 
-def validate_review_gate(
+async def validate_review_gate(
     verdict: ReviewVerdict, cycle: int, max_cycles: int
 ) -> bool:
     """Return True when the reviewer approved the PR.
