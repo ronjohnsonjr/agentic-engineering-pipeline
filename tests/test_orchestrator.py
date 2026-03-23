@@ -10,6 +10,8 @@ import asyncio
 import time
 from unittest.mock import AsyncMock
 
+import pytest
+
 from src.pipeline.orchestrator import (
     DEFAULT_MAX_REVIEW_CYCLES,
     DEFAULT_MAX_VERIFY_ATTEMPTS,
@@ -413,6 +415,10 @@ class TestProgrammerStage:
         result = await orc.run("issue")
         assert result.status == "HALTED"
         assert always_fail.run.await_count == 2
+
+    def test_zero_verify_attempts_raises_value_error(self):
+        with pytest.raises(ValueError, match="max_verify_attempts"):
+            _make_orchestrator(max_verify_attempts=0)
 
     async def test_halts_on_timeout_after_max_attempts(self):
         call_count = 0

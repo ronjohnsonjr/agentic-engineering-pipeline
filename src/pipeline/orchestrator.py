@@ -116,10 +116,10 @@ class PipelineRun:
 
     def to_result(self) -> PipelineResult:
         """Convert to the serialisable :class:`~src.pipeline.briefs.PipelineResult`."""
-        status = "HALTED" if self.halt_stage else "COMPLETE"
+        status: Literal["COMPLETE", "HALTED"] = "HALTED" if self.halt_stage else "COMPLETE"
         notes = self.halt_reason or ""
         return PipelineResult(
-            status=status,  # type: ignore[arg-type]
+            status=status,
             issue=self.issue,
             stages_completed=list(self.completed_stages),
             skipped=dict(self.skipped_stages),
@@ -173,6 +173,7 @@ class Orchestrator:
         max_review_cycles: int = DEFAULT_MAX_REVIEW_CYCLES,
         run_backend_tester: bool = True,
         run_frontend_tester: bool = True,
+        pr_url_pattern: str | None = None,
     ) -> None:
         self._clarifier = clarifier
         self._researcher = researcher
@@ -189,6 +190,12 @@ class Orchestrator:
         self._max_review = max_review_cycles
         self._run_backend = run_backend_tester
         self._run_frontend = run_frontend_tester
+        # Override the default github.com regex for GitHub Enterprise hosts.
+        self._pr_url_pattern: str = (
+            pr_url_pattern or r"https://github\.com[^\s\)\]>\"']+/pull/\d+"
+        )
+        if self._max_verify < 1:
+            raise ValueError("max_verify_attempts must be >= 1")
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -417,48 +424,60 @@ class Orchestrator:
 
         Backend and frontend testers are skipped when configured out. All
         invoked agents must return a PASS; a single FAIL halts the pipeline.
-        """
-        tasks: dict[str, asyncio.Task[str]] = {}
-        running_states: dict[str, AgentRunState] = {}
 
-        # Always run unit tests — record state before creating the task so
-        # run.stages always reflects the intent before any coroutine begins.
+        Uses ``asyncio.gather`` so that if the outer coroutine is cancelled
+        (e.g. a caller-side timeout) all pending sub-tasks are cancelled too,
+        preventing unmonitored background work.
+        """
+        # Build an ordered list of (name, state, coroutine) for enabled testers.
+        # State is recorded before any coroutine starts so run.stages always
+        # reflects intent before execution begins.
+        named_coros: list[tuple[str, AgentRunState]] = []
+        coros = []
+
         unit_state = AgentRunState(stage="unit-tester", status="running")
         run.record(unit_state)
-        running_states["unit-tester"] = unit_state
-        tasks["unit-tester"] = asyncio.create_task(
-            self._call_agent(self._unit_tester, "Run unit tests.")
-        )
+        named_coros.append(("unit-tester", unit_state))
+        coros.append(self._call_agent(self._unit_tester, "Run unit tests."))
 
         if self._run_backend:
             backend_state = AgentRunState(stage="backend-tester", status="running")
             run.record(backend_state)
-            running_states["backend-tester"] = backend_state
-            tasks["backend-tester"] = asyncio.create_task(
-                self._call_agent(self._backend_tester, "Run backend/integration tests.")
-            )
+            named_coros.append(("backend-tester", backend_state))
+            coros.append(self._call_agent(self._backend_tester, "Run backend/integration tests."))
         else:
             run.skip("backend-tester", "disabled by configuration")
 
         if self._run_frontend:
             frontend_state = AgentRunState(stage="frontend-tester", status="running")
             run.record(frontend_state)
-            running_states["frontend-tester"] = frontend_state
-            tasks["frontend-tester"] = asyncio.create_task(
-                self._call_agent(self._frontend_tester, "Run frontend/e2e tests.")
-            )
+            named_coros.append(("frontend-tester", frontend_state))
+            coros.append(self._call_agent(self._frontend_tester, "Run frontend/e2e tests."))
         else:
             run.skip("frontend-tester", "disabled by configuration")
 
-        # Collect results (order preserved by dict insertion)
+        # Run all enabled testers concurrently. return_exceptions=True means
+        # each exception is returned as a value rather than propagated, so we
+        # can record per-tester failures independently.
         results: list[TestResult] = []
         all_passed = True
         failed_details: list[str] = []
 
-        for name, task in tasks.items():
-            state = running_states[name]
-            try:
-                output = await task
+        raw_outputs = await asyncio.gather(*coros, return_exceptions=True)
+
+        for (name, state), raw in zip(named_coros, raw_outputs):
+            if isinstance(raw, asyncio.TimeoutError):
+                state.status = "timeout"
+                state.error = "Agent timed out"
+                all_passed = False
+                failed_details.append(f"{name}: timed out")
+            elif isinstance(raw, BaseException):
+                state.status = "failed"
+                state.error = str(raw)
+                all_passed = False
+                failed_details.append(f"{name}: {raw}")
+            else:
+                output: str = raw
                 state.output = output
                 result = parse_test_result(output)
                 results.append(result)
@@ -470,23 +489,11 @@ class Orchestrator:
                     state.error = "; ".join(result.failures)
                     all_passed = False
                     failed_details.append(f"{name}: {state.error}")
-            except asyncio.TimeoutError:
-                state.status = "timeout"
-                state.error = "Agent timed out"
-                all_passed = False
-                failed_details.append(f"{name}: timed out")
-            except Exception as exc:  # noqa: BLE001
-                state.status = "failed"
-                state.error = str(exc)
-                all_passed = False
-                failed_details.append(f"{name}: {exc}")
 
         if not await validate_test_gate(results):
-            if all_passed:
-                # Gate failed for a structural reason (e.g. no results produced)
-                # not already captured by the per-task loop — ensure the halt
-                # message is informative rather than "Test failures: ".
-                failed_details.append("test gate validation failed: no results produced")
+            # Append unconditionally so the gate failure is always surfaced in
+            # the halt message, even when individual testers already failed.
+            failed_details.append("test gate: structural validation failed (check parser output)")
             all_passed = False
 
         if not all_passed:
@@ -502,14 +509,20 @@ class Orchestrator:
             state.output = output
             # Extract PR URL from the output; regex handles plain URLs, markdown
             # links ([text](url)), angle-bracket wrapping, etc.
-            # Note: the regex matches github.com only; GitHub Enterprise hosts
-            # (e.g. github.mycompany.com) will not match and pr_url will be None.
-            match = re.search(r"https://github\.com[^\s\)\]>\"']+/pull/\d+", output)
+            # By default the regex matches github.com only. Pass pr_url_pattern
+            # to the Orchestrator constructor to support GitHub Enterprise hosts.
+            match = re.search(self._pr_url_pattern, output)
             pr_url: str | None = match.group(0).rstrip(".,)") if match else None
             if pr_url is None:
                 state.status = "failed"
                 state.error = "No pull request URL found in output"
-                run.halt("pr-creator", "PR creator did not produce a pull request URL")
+                run.halt(
+                    "pr-creator",
+                    "PR creator did not produce a pull request URL matching the expected "
+                    "pattern. For github.com, the output must contain a URL like "
+                    "https://github.com/owner/repo/pull/N. For GitHub Enterprise, pass a "
+                    "custom pr_url_pattern to Orchestrator.",
+                )
                 return False
             state.status = "complete"
             run.pr_url = pr_url
