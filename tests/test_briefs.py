@@ -162,6 +162,21 @@ def test_enriched_context_full_payload_fields():
     assert ctx.labels == ["local", "phase-1"]
     assert ctx.pipeline_stage == "Clarifier (Stage 1)"
 
+    # Round-trip through to_context_payload() to verify serialisation
+    payload = ctx.to_context_payload()
+    assert payload["parsed_requirements"] == [
+        "Context payload must include original issue content"
+    ]
+    assert payload["business_requirements"] == [
+        "Enable downstream agents to consume structured JSON"
+    ]
+    assert payload["technical_acceptance_criteria"] == ["EnrichedContext serialises to JSON"]
+    assert payload["dependencies"] == ["AGE-87"]
+    assert payload["related_issues"] == ["AGE-87"]
+    assert payload["relevant_code_paths"] == ["src/pipeline/briefs.py"]
+    assert payload["issue_body"] == "As a pipeline agent I need structured context..."
+    assert payload["issue_title"] == "Receive enriched context payload"
+
 
 def test_enriched_context_to_context_payload_returns_dict():
     ctx = EnrichedContext(
