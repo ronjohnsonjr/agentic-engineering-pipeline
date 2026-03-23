@@ -43,10 +43,11 @@ class EnrichedContext(BaseModel):
 
         This is the canonical form passed between pipeline agents.  The output
         is deterministic: the same :class:`EnrichedContext` always produces the
-        same dict.  For a hashable, cache-key-safe representation use
-        :meth:`to_context_payload_json`.
+        same dict, with keys in alphabetical order (matching
+        :meth:`to_context_payload_json`).  For a hashable, cache-key-safe
+        representation use :meth:`to_context_payload_json`.
         """
-        return self.model_dump(mode="json")
+        return dict(sorted(self.model_dump(mode="json").items()))
 
     def to_context_payload_json(self) -> str:
         """Return the context payload as a compact JSON string."""

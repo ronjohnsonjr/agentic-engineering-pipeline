@@ -1,5 +1,7 @@
 """Unit tests for pipeline brief Pydantic models."""
 
+import json
+
 import pytest
 from pydantic import ValidationError
 
@@ -179,8 +181,6 @@ def test_enriched_context_to_context_payload_is_deterministic():
 
 
 def test_enriched_context_to_context_payload_json_is_string():
-    import json
-
     ctx = EnrichedContext(linear_issue_id="AGE-94", issue_title="Test")
     json_str = ctx.to_context_payload_json()
     assert isinstance(json_str, str)
@@ -189,8 +189,6 @@ def test_enriched_context_to_context_payload_json_is_string():
 
 
 def test_enriched_context_to_context_payload_json_is_sorted():
-    import json
-
     ctx = EnrichedContext(linear_issue_id="AGE-94")
     json_str = ctx.to_context_payload_json()
     # sort_keys=True means the JSON is stable across Python dict ordering

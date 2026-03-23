@@ -106,6 +106,11 @@ def parse_enriched_context(text: str) -> EnrichedContext:
         return EnrichedContext()
 
     def _sub_block(label: str) -> list[str]:
+        # NOTE: searches the full `body` string. If `issue_body` text contains a
+        # line that looks like a known field label (e.g. "Parsed Requirements:"),
+        # this helper could match inside the issue body instead of the intended
+        # section. In practice the issue_body regex above terminates before bullet
+        # sections, so this is only a risk for contrived inputs.
         match = re.search(
             rf"{re.escape(label)}\s*:\s*\n((?:\s*[-*].+\n?)*)", body, re.IGNORECASE
         )
@@ -113,11 +118,16 @@ def parse_enriched_context(text: str) -> EnrichedContext:
 
     # Issue Body may span multiple lines; capture everything after "Issue Body:"
     # up to the next field or bullet section.
+    # The lookahead alternation is built from EnrichedContext.model_fields so that
+    # any new field added to the model is automatically included here — keeping the
+    # two in sync without a manual update.
+    _other_field_labels = "|".join(
+        re.escape(k.replace("_", " ").title())
+        for k in EnrichedContext.model_fields
+        if k != "issue_body"
+    )
     issue_body_match = re.search(
-        r"Issue Body\s*:\s*(.+?)(?=\n(?:Pipeline Stage|Linear Issue ID|Issue Title"
-        r"|Parsed Requirements|Business Requirements|Technical Acceptance Criteria"
-        r"|Dependencies|Related Issues|Linked Documents|Relevant Code Paths"
-        r"|Architectural Constraints|Assumptions|Labels)\s*:|\Z)",
+        rf"Issue Body\s*:\s*(.+?)(?=\n(?:{_other_field_labels})\s*:|\Z)",
         body,
         re.IGNORECASE | re.DOTALL,
     )
