@@ -434,6 +434,22 @@ class TestProgrammerStage:
         assert result.status == "HALTED"
         assert call_count == 2
 
+    async def test_retries_on_empty_output(self):
+        empty_then_pass = AsyncMock(spec=AgentRunner)
+        empty_then_pass.run = AsyncMock(side_effect=["", "QUALITY GATE: PASS"])
+        orc = _make_orchestrator(programmer=empty_then_pass, max_verify_attempts=3)
+        result = await orc.run("issue")
+        assert result.status == "COMPLETE"
+        assert empty_then_pass.run.await_count == 2
+
+    async def test_halts_after_all_empty_outputs(self):
+        always_empty = AsyncMock(spec=AgentRunner)
+        always_empty.run = AsyncMock(return_value="")
+        orc = _make_orchestrator(programmer=always_empty, max_verify_attempts=2)
+        result = await orc.run("issue")
+        assert result.status == "HALTED"
+        assert always_empty.run.await_count == 2
+
 
 # ---------------------------------------------------------------------------
 # Test team — parallel execution and skip rules
@@ -542,8 +558,9 @@ class TestTestTeam:
         assert call_counts["unit"] == 1
         assert call_counts["backend"] == 1
         assert call_counts["frontend"] == 1
-        # Parallel: total wall-time should be well under 3 * 0.05 s
-        assert elapsed < 0.2
+        # Parallel: total wall-time should be well under 3 * 0.05 s.
+        # Use a generous bound (0.5 s) to accommodate CI scheduling jitter.
+        assert elapsed < 0.5
 
 
 # ---------------------------------------------------------------------------

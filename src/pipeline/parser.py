@@ -97,7 +97,15 @@ def parse_clarifier_brief(text: str) -> ClarifierBrief:
     raw_questions = _bullet_list(questions_block)
     questions = [q for q in raw_questions if q.lower() not in ("none", "(none)")]
 
-    return ClarifierBrief(verdict=raw_verdict, questions=questions)  # type: ignore[arg-type]
+    confidence_raw = _field_value(body, "Confidence")
+    confidence_score: float = 1.0
+    if confidence_raw:
+        try:
+            confidence_score = float(confidence_raw)
+        except ValueError:
+            pass
+
+    return ClarifierBrief(verdict=raw_verdict, questions=questions, confidence_score=confidence_score)  # type: ignore[arg-type]
 
 
 def parse_research_brief(text: str) -> ResearchBrief:

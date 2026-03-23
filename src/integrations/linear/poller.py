@@ -134,8 +134,9 @@ class LinearPoller:
                 await self._client.add_comment(
                     issue_id,
                     f"⚠️ Moved to **{NEEDS_CLARIFICATION_STATUS}**: "
-                    "the issue has no description or acceptance criteria. "
-                    "Please add context before re-queuing for development.",
+                    "the issue has no description. "
+                    "Please add a clear description and any relevant acceptance criteria "
+                    "before re-queuing for development.",
                 )
             else:
                 logger.warning(

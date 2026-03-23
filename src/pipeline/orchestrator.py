@@ -278,8 +278,20 @@ class Orchestrator:
             brief = parse_clarifier_brief(output)
             if not await validate_clarifier_gate(brief):
                 state.status = "failed"
-                state.error = f"NEEDS_CLARITY: {brief.questions}"
-                run.halt("clarifier", f"Clarifier returned NEEDS_CLARITY: {brief.questions}")
+                if brief.verdict == "NEEDS_CLARITY":
+                    state.error = f"NEEDS_CLARITY: {brief.questions}"
+                    run.halt("clarifier", f"Clarifier returned NEEDS_CLARITY: {brief.questions}")
+                else:
+                    # verdict == "CLEAR" but confidence_score below threshold
+                    state.error = (
+                        f"LOW_CONFIDENCE: Clarifier returned CLEAR but confidence below threshold "
+                        f"(score={brief.confidence_score:.2f})"
+                    )
+                    run.halt(
+                        "clarifier",
+                        f"Clarifier failed validation: CLEAR verdict with low confidence "
+                        f"(score={brief.confidence_score:.2f})",
+                    )
                 return None
             state.status = "complete"
             run.complete("clarifier")
@@ -387,9 +399,23 @@ class Orchestrator:
                         return False
                     prompt = f"{prompt}\n\nPrevious attempt returned empty output. Please provide implementation."
                     continue
-                state.status = "complete"
-                run.complete(f"programmer (attempt {attempt})")
-                return True
+                if re.search(r"QUALITY\s+GATE\s*:\s*PASS", output, re.IGNORECASE):
+                    state.status = "complete"
+                    run.complete("programmer")
+                    return True
+                # No explicit QUALITY GATE: PASS marker — treat as a failed attempt.
+                state.status = "failed"
+                state.error = "Programmer output missing QUALITY GATE: PASS marker"
+                if attempt >= self._max_verify:
+                    run.halt(
+                        "programmer",
+                        f"Programmer did not produce a passing quality gate after {self._max_verify} attempts",
+                    )
+                    return False
+                prompt = (
+                    f"{prompt}\n\nThe previous attempt did not pass the quality gate. "
+                    "Please fix any issues and include 'QUALITY GATE: PASS' when the implementation is complete."
+                )
             except asyncio.TimeoutError:
                 state.status = "timeout"
                 state.error = "Agent timed out"
@@ -459,38 +485,43 @@ class Orchestrator:
         all_passed = True
         failed_details: list[str] = []
 
-        for name, task in tasks.items():
-            state = running_states[name]
-            try:
-                output = await task
-                state.output = output
-                result = parse_test_result(output)
-                results.append(result)
-                if result.passed:
-                    state.status = "complete"
-                    run.complete(name)
-                else:
-                    state.status = "failed"
-                    state.error = "; ".join(result.failures)
+        try:
+            for name, task in tasks.items():
+                state = running_states[name]
+                try:
+                    output = await task
+                    state.output = output
+                    result = parse_test_result(output)
+                    results.append(result)
+                    if result.passed:
+                        state.status = "complete"
+                        run.complete(name)
+                    else:
+                        state.status = "failed"
+                        state.error = "; ".join(result.failures)
+                        all_passed = False
+                        failed_details.append(f"{name}: {state.error}")
+                except asyncio.TimeoutError:
+                    state.status = "timeout"
+                    state.error = "Agent timed out"
                     all_passed = False
-                    failed_details.append(f"{name}: {state.error}")
-            except asyncio.TimeoutError:
-                state.status = "timeout"
-                state.error = "Agent timed out"
-                all_passed = False
-                failed_details.append(f"{name}: timed out")
-            except Exception as exc:  # noqa: BLE001
-                state.status = "failed"
-                state.error = str(exc)
-                all_passed = False
-                failed_details.append(f"{name}: {exc}")
+                    failed_details.append(f"{name}: timed out")
+                except Exception as exc:  # noqa: BLE001
+                    state.status = "failed"
+                    state.error = str(exc)
+                    all_passed = False
+                    failed_details.append(f"{name}: {exc}")
+        finally:
+            # Cancel any tasks that have not yet completed (e.g. if CancelledError
+            # propagates from an outer scope and exits this loop early).
+            for t in tasks.values():
+                if not t.done():
+                    t.cancel()
 
         if not await validate_test_gate(results):
-            if all_passed:
-                # Gate failed for a structural reason (e.g. no results produced)
-                # not already captured by the per-task loop — ensure the halt
-                # message is informative rather than "Test failures: ".
-                failed_details.append("test gate validation failed: no results produced")
+            # Always record the gate-failure reason so it appears in the halt message
+            # even when individual tasks also failed.
+            failed_details.append("test gate validation failed: no results produced")
             all_passed = False
 
         if not all_passed:
