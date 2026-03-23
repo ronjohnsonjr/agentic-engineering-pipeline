@@ -153,9 +153,9 @@ def parse_research_brief(text: str) -> ResearchBrief:
         affected_files=_sub_block("Affected Files"),
         interfaces=_sub_block("Interfaces"),
         existing_tests=_sub_block("Existing Tests"),
-        patterns=_sub_block("Patterns"),
+        patterns=_sub_block("Patterns to Follow"),
         risks=_sub_block("Risks"),
-        open_questions=_sub_block("Open Questions"),
+        open_questions=_sub_block("Open Questions for Planner"),
     )
 
 

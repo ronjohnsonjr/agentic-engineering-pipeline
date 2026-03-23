@@ -101,13 +101,13 @@ Interfaces:
 Existing Tests:
 - tests/test_api.py -- covers request routing end-to-end
 
-Patterns:
+Patterns to Follow:
 - Use dependency injection for all service objects (src/services.py:1-20)
 
 Risks:
 - Changing models.py may break downstream serialisation
 
-Open Questions:
+Open Questions for Planner:
 - Should the new endpoint require authentication?
 """
 

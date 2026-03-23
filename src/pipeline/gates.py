@@ -53,7 +53,7 @@ async def validate_research_gate(
 
     Planner cannot start until this gate passes.
     """
-    passed = bool(brief.summary.strip()) and bool(brief.relevant_files)
+    passed = bool(brief.summary.strip()) and bool(brief.relevant_files or brief.affected_files)
     if reporter is not None:
         status = "success" if passed else "failure"
         if passed:
@@ -63,7 +63,7 @@ async def validate_research_gate(
             errors: list[str] = []
             if not brief.summary.strip():
                 errors.append("Research summary is missing or blank")
-            if not brief.relevant_files:
+            if not (brief.relevant_files or brief.affected_files):
                 errors.append("No relevant files were identified for research")
             await reporter.report_milestone("research", status, errors=errors)
     return passed
