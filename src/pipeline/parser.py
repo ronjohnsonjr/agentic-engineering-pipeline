@@ -146,9 +146,9 @@ def parse_enriched_context(text: str) -> EnrichedContext:
     # programmatic alternation with an explicit `ClassVar[list[str]]` on
     # `EnrichedContext` that maps field keys to their canonical text labels.
     issue_body_match = re.search(
-        rf"Issue Body\s*:[ \t]*(.*?)(?=\n(?:{_ENRICHED_CONTEXT_FIELD_LABELS})\s*:|\Z)",
+        rf"^Issue Body\s*:[ \t]*(.*?)(?=\n(?:{_ENRICHED_CONTEXT_FIELD_LABELS})\s*:|\Z)",
         body,
-        re.IGNORECASE | re.DOTALL,
+        re.IGNORECASE | re.DOTALL | re.MULTILINE,
     )
     issue_body = issue_body_match.group(1).strip() if issue_body_match else ""
 

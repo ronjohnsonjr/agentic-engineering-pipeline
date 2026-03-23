@@ -253,6 +253,8 @@ Pipeline Stage: Stage 1
     ctx = parse_enriched_context(text)
     # The issue body is truncated before "Linked Documents:" because that label
     # appears at the start of a line and matches the lookahead alternation.
+    # TODO: Fix by pre-stripping the issue body section before running
+    # sub-block extraction, so embedded field-like labels can't escape.
     assert ctx.issue_body == "Background:"
     assert ctx.pipeline_stage == "Stage 1"
 
