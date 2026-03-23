@@ -28,6 +28,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 2g
 
   # ── Agent execution environment ─────────────────────────────────────────────
   agent:
@@ -54,6 +58,11 @@ services:
     working_dir: /workspace
     # Keep the container alive for interactive or CI use.
     command: sleep infinity
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+          cpus: "2"
 
 networks:
   # Isolated network: agents can reach the internet but not any host-local

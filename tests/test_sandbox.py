@@ -5,6 +5,7 @@ docker-compose.yml) rather than building or running containers, so they
 run cheaply in CI without Docker.
 """
 
+import functools
 import re
 import yaml
 from pathlib import Path
@@ -30,6 +31,7 @@ def test_compose_file_exists():
 # ── Dockerfile: shell access ──────────────────────────────────────────────────
 
 
+@functools.lru_cache(maxsize=None)
 def _dockerfile_text() -> str:
     return DOCKERFILE.read_text()
 
@@ -140,6 +142,7 @@ def test_dockerfile_contains_no_hard_coded_secrets():
 # ── docker-compose.yml: DinD service ─────────────────────────────────────────
 
 
+@functools.lru_cache(maxsize=None)
 def _compose() -> dict:
     return yaml.safe_load(COMPOSE_FILE.read_text())
 
@@ -213,7 +216,13 @@ def test_compose_network_uses_bridge_driver():
     networks = _compose().get("networks", {})
     for name, cfg in networks.items():
         if isinstance(cfg, dict):
-            driver = cfg.get("driver", "bridge")
-            assert driver == "bridge", (
-                f"Network '{name}' must use the bridge driver for isolation, got: {driver!r}"
+            assert cfg.get("driver") == "bridge", (
+                f"Network '{name}' must explicitly declare driver: bridge, got: {cfg.get('driver')!r}"
             )
+
+
+def test_compose_agent_is_not_privileged():
+    agent = _compose()["services"]["agent"]
+    assert agent.get("privileged") is not True, (
+        "agent service must not run privileged — only the dind sidecar needs that"
+    )
