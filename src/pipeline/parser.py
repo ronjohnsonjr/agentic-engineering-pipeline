@@ -65,6 +65,21 @@ def _field_value(block: str, field: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+def _sub_block(body: str, label: str) -> list[str]:
+    """Extract bullet items from a labelled sub-section inside *body*.
+
+    Handles an optional blank line between the label and the first bullet,
+    and anchors the label to the start of a line to prevent false matches
+    inside multi-line field values.
+    """
+    match = re.search(
+        rf"^{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+        body,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    return _bullet_list(match.group(1)) if match else []
+
+
 # ---------------------------------------------------------------------------
 # Parsers
 # ---------------------------------------------------------------------------
@@ -124,19 +139,6 @@ def parse_enriched_context(text: str) -> EnrichedContext:
         # field (e.g. `context_present: bool`) instead of adding heuristics here.
         return EnrichedContext()
 
-    def _sub_block(label: str) -> list[str]:
-        # Use `^` (with re.MULTILINE) to anchor the label to the start of a
-        # line. This prevents false matches when `issue_body` text contains a
-        # mid-line occurrence of a field-like label (e.g. a body that reads
-        # "See Parsed Requirements:\n- old req" would previously match before
-        # the real "Parsed Requirements:" section).
-        match = re.search(
-            rf"^{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
-            body,
-            re.IGNORECASE | re.MULTILINE,
-        )
-        return _bullet_list(match.group(1)) if match else []
-
     # Issue Body may span multiple lines; capture everything after "Issue Body:"
     # up to the next field or bullet section.
     # _ENRICHED_CONTEXT_FIELD_LABELS is a module-level constant built from
@@ -165,16 +167,16 @@ def parse_enriched_context(text: str) -> EnrichedContext:
         issue_title=_field_value(body, "Issue Title"),
         issue_body=issue_body,
         pipeline_stage=_field_value(body, "Pipeline Stage"),
-        parsed_requirements=_sub_block("Parsed Requirements"),
-        business_requirements=_sub_block("Business Requirements"),
-        technical_acceptance_criteria=_sub_block("Technical Acceptance Criteria"),
-        dependencies=_sub_block("Dependencies"),
-        related_issues=_sub_block("Related Issues"),
-        linked_documents=_sub_block("Linked Documents"),
-        relevant_code_paths=_sub_block("Relevant Code Paths"),
-        architectural_constraints=_sub_block("Architectural Constraints"),
-        assumptions=_sub_block("Assumptions"),
-        labels=_sub_block("Labels"),
+        parsed_requirements=_sub_block(body, "Parsed Requirements"),
+        business_requirements=_sub_block(body, "Business Requirements"),
+        technical_acceptance_criteria=_sub_block(body, "Technical Acceptance Criteria"),
+        dependencies=_sub_block(body, "Dependencies"),
+        related_issues=_sub_block(body, "Related Issues"),
+        linked_documents=_sub_block(body, "Linked Documents"),
+        relevant_code_paths=_sub_block(body, "Relevant Code Paths"),
+        architectural_constraints=_sub_block(body, "Architectural Constraints"),
+        assumptions=_sub_block(body, "Assumptions"),
+        labels=_sub_block(body, "Labels"),
     )
 
 
@@ -260,19 +262,11 @@ def parse_research_brief(text: str) -> ResearchBrief:
 
     summary = _field_value(body, "Summary")
 
-    def _sub_block(label: str) -> list[str]:
-        match = re.search(
-            rf"^{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
-            body,
-            re.IGNORECASE | re.MULTILINE,
-        )
-        return _bullet_list(match.group(1)) if match else []
-
     return ResearchBrief(
         summary=summary,
-        conventions=_sub_block("Conventions"),
-        relevant_files=_sub_block("Relevant Files"),
-        risks=_sub_block("Risks"),
+        conventions=_sub_block(body, "Conventions"),
+        relevant_files=_sub_block(body, "Relevant Files"),
+        risks=_sub_block(body, "Risks"),
     )
 
 
@@ -329,19 +323,11 @@ def parse_implementation_plan(text: str) -> ImplementationPlan:
         if current_desc is not None:
             steps.append(PlanStep(description=current_desc, details=current_details))
 
-    def _sub_block(label: str) -> list[str]:
-        match = re.search(
-            rf"^{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
-            body,
-            re.IGNORECASE | re.MULTILINE,
-        )
-        return _bullet_list(match.group(1)) if match else []
-
     return ImplementationPlan(
         issue=issue,
         steps=steps,
-        out_of_scope=_sub_block("Out of Scope"),
-        risks=_sub_block("Risks"),
+        out_of_scope=_sub_block(body, "Out of Scope"),
+        risks=_sub_block(body, "Risks"),
     )
 
 
@@ -416,18 +402,10 @@ def parse_review_verdict(text: str) -> ReviewVerdict:
     cycle_raw = _field_value(body, "Cycle")
     cycle = int(cycle_raw) if cycle_raw.isdigit() else 1
 
-    def _sub_block(label: str) -> list[str]:
-        match = re.search(
-            rf"^{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
-            body,
-            re.IGNORECASE | re.MULTILINE,
-        )
-        return _bullet_list(match.group(1)) if match else []
-
     return ReviewVerdict(
         verdict=raw_verdict,  # type: ignore[arg-type]
-        blocking=_sub_block("Blocking"),
-        suggestions=_sub_block("Suggestions"),
+        blocking=_sub_block(body, "Blocking"),
+        suggestions=_sub_block(body, "Suggestions"),
         cycle=cycle,
     )
 

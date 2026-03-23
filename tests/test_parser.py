@@ -3,6 +3,7 @@
 import pytest
 
 from src.pipeline.parser import (
+    _ENRICHED_CONTEXT_FIELD_LABELS,
     parse_clarifier_brief,
     parse_enriched_context,
     parse_implementation_plan,
@@ -365,6 +366,38 @@ Parsed Requirements:
     assert isinstance(payload, dict)
     assert payload["linear_issue_id"] == "AGE-94"
     assert payload["parsed_requirements"] == ["Req 1"]
+
+
+def test_parse_clarifier_brief_no_enriched_context_returns_default():
+    """parse_clarifier_brief propagates a default EnrichedContext when no ENRICHED CONTEXT block is present."""
+    text = """\
+## CLARIFIER BRIEF
+
+Verdict: CLEAR
+
+Questions:
+- (none)
+"""
+    brief = parse_clarifier_brief(text)
+    assert brief.verdict == "CLEAR"
+    assert brief.enriched_context.linear_issue_id == ""
+    assert brief.enriched_context.parsed_requirements == []
+    assert brief.enriched_context.issue_title == ""
+
+
+def test_enriched_context_field_labels_contains_known_labels():
+    """_ENRICHED_CONTEXT_FIELD_LABELS must include known canonical label strings.
+
+    The constant stores re.escape()-d labels joined with ``|``, so we compare
+    against the escaped form of each expected label.
+    """
+    import re as _re
+
+    for expected in ("Parsed Requirements", "Linear Issue ID", "Technical Acceptance Criteria"):
+        escaped = _re.escape(expected)
+        assert escaped in _ENRICHED_CONTEXT_FIELD_LABELS, (
+            f"Expected escaped label {escaped!r} to appear in _ENRICHED_CONTEXT_FIELD_LABELS"
+        )
 
 
 # ---------------------------------------------------------------------------

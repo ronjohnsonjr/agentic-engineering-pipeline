@@ -61,7 +61,7 @@ class EnrichedContext(BaseModel):
         output is still byte-for-byte stable for identical inputs; callers who
         need human-readable non-ASCII text should decode via :func:`json.loads`.
         """
-        return json.dumps(self.to_context_payload(), separators=(",", ":"))
+        return json.dumps(self.to_context_payload(), separators=(",", ":"), ensure_ascii=True)
 
 
 class ClarifierBrief(BaseModel):
