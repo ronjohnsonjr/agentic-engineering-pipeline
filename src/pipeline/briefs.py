@@ -43,7 +43,8 @@ class EnrichedContext(BaseModel):
 
         This is the canonical form passed between pipeline agents.  The output
         is deterministic: the same :class:`EnrichedContext` always produces the
-        same dict, making it safe to use as a gate input or cache key.
+        same dict.  For a hashable, cache-key-safe representation use
+        :meth:`to_context_payload_json`.
         """
         return self.model_dump(mode="json")
 

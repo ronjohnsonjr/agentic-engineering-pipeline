@@ -150,6 +150,25 @@ def test_parse_enriched_context_full():
     assert "phase-1" in ctx.labels
 
 
+def test_parse_enriched_context_multiline_issue_body():
+    text = """\
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-10
+Issue Body: First line.
+  Second line (continuation).
+Pipeline Stage: Stage 1
+
+Parsed Requirements:
+- Req
+"""
+    ctx = parse_enriched_context(text)
+    assert "First line" in ctx.issue_body
+    assert "Second line" in ctx.issue_body
+    assert "Pipeline Stage" not in ctx.issue_body  # must not bleed into next field
+    assert ctx.pipeline_stage == "Stage 1"
+
+
 def test_parse_enriched_context_missing_section_returns_empty():
     ctx = parse_enriched_context("## CLARIFIER BRIEF\n\nVerdict: CLEAR\n")
     assert ctx.linear_issue_id == ""
