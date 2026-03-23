@@ -4,6 +4,7 @@ import pytest
 
 from src.pipeline.parser import (
     parse_clarifier_brief,
+    parse_enriched_context,
     parse_implementation_plan,
     parse_pipeline_result,
     parse_review_verdict,
@@ -72,6 +73,188 @@ Other content.
 """
     brief = parse_clarifier_brief(text)
     assert brief.verdict == "CLEAR"
+
+
+# ---------------------------------------------------------------------------
+# parse_enriched_context
+# ---------------------------------------------------------------------------
+
+ENRICHED_CONTEXT_FULL = """\
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-94
+Issue Title: Receive enriched context payload
+Issue Body: As a pipeline agent I need structured context.
+Pipeline Stage: Clarifier (Stage 1)
+
+Parsed Requirements:
+- Context payload must include original issue content
+- Payload formatted as structured JSON
+
+Business Requirements:
+- Enable downstream agents to consume structured JSON
+
+Technical Acceptance Criteria:
+- EnrichedContext serialises to JSON via to_context_payload()
+- All AC fields present in the payload dict
+
+Dependencies:
+- AGE-87
+
+Related Issues:
+- AGE-87
+
+Linked Documents:
+- https://linear.app/example/issue/AGE-87
+
+Relevant Code Paths:
+- src/pipeline/briefs.py
+- src/pipeline/parser.py
+
+Architectural Constraints:
+- Must not modify examples/consumer-workflows/
+
+Assumptions:
+- No breaking API changes required
+
+Labels:
+- local
+- phase-1
+"""
+
+
+def test_parse_enriched_context_full():
+    ctx = parse_enriched_context(ENRICHED_CONTEXT_FULL)
+    assert ctx.linear_issue_id == "AGE-94"
+    assert ctx.issue_title == "Receive enriched context payload"
+    assert "structured context" in ctx.issue_body
+    assert ctx.pipeline_stage == "Clarifier (Stage 1)"
+    assert (
+        "Context payload must include original issue content" in ctx.parsed_requirements
+    )
+    assert len(ctx.parsed_requirements) == 2
+    assert ctx.business_requirements == [
+        "Enable downstream agents to consume structured JSON"
+    ]
+    assert len(ctx.technical_acceptance_criteria) == 2
+    assert ctx.dependencies == ["AGE-87"]
+    assert ctx.related_issues == ["AGE-87"]
+    assert len(ctx.linked_documents) == 1
+    assert "src/pipeline/briefs.py" in ctx.relevant_code_paths
+    assert "src/pipeline/parser.py" in ctx.relevant_code_paths
+    assert ctx.architectural_constraints == [
+        "Must not modify examples/consumer-workflows/"
+    ]
+    assert ctx.assumptions == ["No breaking API changes required"]
+    assert "local" in ctx.labels
+    assert "phase-1" in ctx.labels
+
+
+def test_parse_enriched_context_missing_section_returns_empty():
+    ctx = parse_enriched_context("## CLARIFIER BRIEF\n\nVerdict: CLEAR\n")
+    assert ctx.linear_issue_id == ""
+    assert ctx.parsed_requirements == []
+    assert ctx.issue_title == ""
+
+
+def test_parse_enriched_context_partial_fields():
+    text = """\
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-10
+Issue Title: Simple fix
+
+Parsed Requirements:
+- Fix the bug
+"""
+    ctx = parse_enriched_context(text)
+    assert ctx.linear_issue_id == "AGE-10"
+    assert ctx.issue_title == "Simple fix"
+    assert ctx.parsed_requirements == ["Fix the bug"]
+    assert ctx.dependencies == []
+    assert ctx.related_issues == []
+
+
+def test_parse_clarifier_brief_with_enriched_context():
+    text = """\
+## CLARIFIER BRIEF
+
+Verdict: CLEAR
+
+Questions:
+- (none)
+
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-94
+Issue Title: Receive enriched context payload
+
+Parsed Requirements:
+- Context payload must include original issue content
+
+Dependencies:
+- AGE-87
+
+Relevant Code Paths:
+- src/pipeline/briefs.py
+"""
+    brief = parse_clarifier_brief(text)
+    assert brief.verdict == "CLEAR"
+    assert brief.questions == []
+    assert brief.enriched_context.linear_issue_id == "AGE-94"
+    assert brief.enriched_context.issue_title == "Receive enriched context payload"
+    assert brief.enriched_context.parsed_requirements == [
+        "Context payload must include original issue content"
+    ]
+    assert brief.enriched_context.dependencies == ["AGE-87"]
+    assert "src/pipeline/briefs.py" in brief.enriched_context.relevant_code_paths
+
+
+def test_parse_clarifier_brief_needs_clarity_with_enriched_context():
+    text = """\
+## CLARIFIER BRIEF
+
+Verdict: NEEDS_CLARITY
+
+Questions:
+- What is the expected output format?
+
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-55
+Issue Title: Ambiguous feature
+
+Parsed Requirements:
+- Some requirement
+"""
+    brief = parse_clarifier_brief(text)
+    assert brief.verdict == "NEEDS_CLARITY"
+    assert "What is the expected output format?" in brief.questions
+    assert brief.enriched_context.linear_issue_id == "AGE-55"
+
+
+def test_parse_clarifier_brief_enriched_context_payload_is_dict():
+    text = """\
+## CLARIFIER BRIEF
+
+Verdict: CLEAR
+
+Questions:
+- (none)
+
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-94
+Issue Title: Test
+
+Parsed Requirements:
+- Req 1
+"""
+    brief = parse_clarifier_brief(text)
+    payload = brief.enriched_context.to_context_payload()
+    assert isinstance(payload, dict)
+    assert payload["linear_issue_id"] == "AGE-94"
+    assert payload["parsed_requirements"] == ["Req 1"]
 
 
 # ---------------------------------------------------------------------------

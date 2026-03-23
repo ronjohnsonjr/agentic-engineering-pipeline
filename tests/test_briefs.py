@@ -90,6 +90,15 @@ def test_clarifier_brief_enriched_context_default():
     assert ctx.linked_documents == []
     assert ctx.assumptions == []
     assert ctx.architectural_constraints == []
+    # New fields default to empty
+    assert ctx.issue_title == ""
+    assert ctx.issue_body == ""
+    assert ctx.parsed_requirements == []
+    assert ctx.business_requirements == []
+    assert ctx.technical_acceptance_criteria == []
+    assert ctx.dependencies == []
+    assert ctx.related_issues == []
+    assert ctx.relevant_code_paths == []
 
 
 def test_clarifier_brief_enriched_context_populated():
@@ -115,6 +124,97 @@ def test_enriched_context_standalone():
     assert ctx.linear_issue_id == "AGE-42"
     assert ctx.labels == ["local"]
     assert ctx.pipeline_stage == ""
+
+
+def test_enriched_context_full_payload_fields():
+    ctx = EnrichedContext(
+        linear_issue_id="AGE-94",
+        issue_title="Receive enriched context payload",
+        issue_body="As a pipeline agent I need structured context...",
+        parsed_requirements=["Context payload must include original issue content"],
+        business_requirements=["Enable downstream agents to consume structured JSON"],
+        technical_acceptance_criteria=["EnrichedContext serialises to JSON"],
+        dependencies=["AGE-87"],
+        related_issues=["AGE-87"],
+        linked_documents=["https://linear.app/example/issue/AGE-87"],
+        relevant_code_paths=["src/pipeline/briefs.py"],
+        architectural_constraints=["Must not modify examples/consumer-workflows/"],
+        assumptions=["No breaking API changes required"],
+        labels=["local", "phase-1"],
+        pipeline_stage="Clarifier (Stage 1)",
+    )
+    assert ctx.issue_title == "Receive enriched context payload"
+    assert ctx.issue_body == "As a pipeline agent I need structured context..."
+    assert ctx.parsed_requirements == [
+        "Context payload must include original issue content"
+    ]
+    assert ctx.business_requirements == [
+        "Enable downstream agents to consume structured JSON"
+    ]
+    assert ctx.technical_acceptance_criteria == ["EnrichedContext serialises to JSON"]
+    assert ctx.dependencies == ["AGE-87"]
+    assert ctx.related_issues == ["AGE-87"]
+    assert ctx.relevant_code_paths == ["src/pipeline/briefs.py"]
+
+
+def test_enriched_context_to_context_payload_returns_dict():
+    ctx = EnrichedContext(
+        linear_issue_id="AGE-94",
+        issue_title="Test issue",
+        parsed_requirements=["Req 1", "Req 2"],
+    )
+    payload = ctx.to_context_payload()
+    assert isinstance(payload, dict)
+    assert payload["linear_issue_id"] == "AGE-94"
+    assert payload["issue_title"] == "Test issue"
+    assert payload["parsed_requirements"] == ["Req 1", "Req 2"]
+
+
+def test_enriched_context_to_context_payload_is_deterministic():
+    ctx = EnrichedContext(
+        linear_issue_id="AGE-94",
+        dependencies=["AGE-87"],
+        labels=["local"],
+    )
+    assert ctx.to_context_payload() == ctx.to_context_payload()
+
+
+def test_enriched_context_to_context_payload_json_is_string():
+    import json
+
+    ctx = EnrichedContext(linear_issue_id="AGE-94", issue_title="Test")
+    json_str = ctx.to_context_payload_json()
+    assert isinstance(json_str, str)
+    parsed = json.loads(json_str)
+    assert parsed["linear_issue_id"] == "AGE-94"
+
+
+def test_enriched_context_to_context_payload_json_is_sorted():
+    import json
+
+    ctx = EnrichedContext(linear_issue_id="AGE-94")
+    json_str = ctx.to_context_payload_json()
+    # sort_keys=True means the JSON is stable across Python dict ordering
+    parsed_keys = list(json.loads(json_str).keys())
+    assert parsed_keys == sorted(parsed_keys)
+
+
+def test_enriched_context_payload_contains_all_ac_fields():
+    """Context payload must expose all Acceptance Criteria fields."""
+    ctx = EnrichedContext()
+    payload = ctx.to_context_payload()
+    required_keys = {
+        "issue_body",  # original issue content
+        "parsed_requirements",  # parsed requirements
+        "dependencies",  # identified dependencies
+        "relevant_code_paths",  # relevant code paths
+        "architectural_constraints",  # constraints
+        "business_requirements",  # extracted business requirements
+        "technical_acceptance_criteria",  # technical AC
+        "related_issues",  # related issues
+        "linked_documents",  # linked documents
+    }
+    assert required_keys.issubset(payload.keys())
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +260,9 @@ def test_plan_step_description_only():
 
 
 def test_plan_step_with_details():
-    step = PlanStep(description="Refactor auth", details=["Move to middleware", "Add tests"])
+    step = PlanStep(
+        description="Refactor auth", details=["Move to middleware", "Add tests"]
+    )
     assert len(step.details) == 2
 
 

@@ -12,6 +12,7 @@ import re
 
 from src.pipeline.briefs import (
     ClarifierBrief,
+    EnrichedContext,
     ImplementationPlan,
     PipelineResult,
     PlanStep,
@@ -56,8 +57,89 @@ def _field_value(block: str, field: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def parse_enriched_context(text: str) -> EnrichedContext:
+    """Parse an ENRICHED CONTEXT section.
+
+    Expected format::
+
+        ## ENRICHED CONTEXT
+
+        Linear Issue ID: AGE-94
+        Issue Title: Receive enriched context payload
+        Issue Body: <original issue text>
+        Pipeline Stage: Clarifier (Stage 1)
+
+        Parsed Requirements:
+        - Context payload must include original issue content
+
+        Business Requirements:
+        - Enable downstream agents to consume a structured JSON payload
+
+        Technical Acceptance Criteria:
+        - EnrichedContext serialises to JSON via to_context_payload()
+
+        Dependencies:
+        - AGE-87
+
+        Related Issues:
+        - AGE-87
+
+        Linked Documents:
+        - https://linear.app/example/issue/AGE-87
+
+        Relevant Code Paths:
+        - src/pipeline/briefs.py
+        - src/pipeline/parser.py
+
+        Architectural Constraints:
+        - Must not modify examples/consumer-workflows/
+
+        Assumptions:
+        - No breaking API changes required
+
+        Labels:
+        - local
+        - phase-1
+    """
+    body = _extract_section(text, "ENRICHED CONTEXT")
+    if not body:
+        return EnrichedContext()
+
+    def _sub_block(label: str) -> list[str]:
+        match = re.search(
+            rf"{re.escape(label)}\s*:\s*\n((?:\s*[-*].+\n?)*)", body, re.IGNORECASE
+        )
+        return _bullet_list(match.group(1)) if match else []
+
+    # Issue Body may span multiple lines; capture everything after "Issue Body:"
+    # up to the next field or bullet section.
+    issue_body_match = re.search(
+        r"Issue Body\s*:\s*(.+?)(?=\n\w[^\n]*:\s*\n|\Z)",
+        body,
+        re.IGNORECASE | re.DOTALL,
+    )
+    issue_body = issue_body_match.group(1).strip() if issue_body_match else ""
+
+    return EnrichedContext(
+        linear_issue_id=_field_value(body, "Linear Issue ID"),
+        issue_title=_field_value(body, "Issue Title"),
+        issue_body=issue_body,
+        pipeline_stage=_field_value(body, "Pipeline Stage"),
+        parsed_requirements=_sub_block("Parsed Requirements"),
+        business_requirements=_sub_block("Business Requirements"),
+        technical_acceptance_criteria=_sub_block("Technical Acceptance Criteria"),
+        dependencies=_sub_block("Dependencies"),
+        related_issues=_sub_block("Related Issues"),
+        linked_documents=_sub_block("Linked Documents"),
+        relevant_code_paths=_sub_block("Relevant Code Paths"),
+        architectural_constraints=_sub_block("Architectural Constraints"),
+        assumptions=_sub_block("Assumptions"),
+        labels=_sub_block("Labels"),
+    )
+
+
 def parse_clarifier_brief(text: str) -> ClarifierBrief:
-    """Parse a CLARIFIER BRIEF section.
+    """Parse a CLARIFIER BRIEF section, including an optional ENRICHED CONTEXT.
 
     Expected format::
 
@@ -77,6 +159,13 @@ def parse_clarifier_brief(text: str) -> ClarifierBrief:
         Questions:
         - What is the expected API response format?
         - Should the endpoint require authentication?
+
+    Optionally followed by::
+
+        ## ENRICHED CONTEXT
+
+        Linear Issue ID: AGE-94
+        ...
     """
     body = _extract_section(text, "CLARIFIER BRIEF")
     if not body:
@@ -97,7 +186,13 @@ def parse_clarifier_brief(text: str) -> ClarifierBrief:
     raw_questions = _bullet_list(questions_block)
     questions = [q for q in raw_questions if q.lower() not in ("none", "(none)")]
 
-    return ClarifierBrief(verdict=raw_verdict, questions=questions)  # type: ignore[arg-type]
+    enriched_context = parse_enriched_context(text)
+
+    return ClarifierBrief(  # type: ignore[arg-type]
+        verdict=raw_verdict,
+        questions=questions,
+        enriched_context=enriched_context,
+    )
 
 
 def parse_research_brief(text: str) -> ResearchBrief:
@@ -182,7 +277,9 @@ def parse_implementation_plan(text: str) -> ImplementationPlan:
             bullet = re.match(r"^\s+[-*]\s+(.+)$", line)
             if numbered:
                 if current_desc is not None:
-                    steps.append(PlanStep(description=current_desc, details=current_details))
+                    steps.append(
+                        PlanStep(description=current_desc, details=current_details)
+                    )
                 current_desc = numbered.group(1).strip()
                 current_details = []
             elif bullet and current_desc is not None:
