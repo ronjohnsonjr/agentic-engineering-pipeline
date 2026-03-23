@@ -190,10 +190,15 @@ class Orchestrator:
         self._max_review = max_review_cycles
         self._run_backend = run_backend_tester
         self._run_frontend = run_frontend_tester
-        # Override the default github.com regex for GitHub Enterprise hosts.
-        self._pr_url_pattern: str = (
-            pr_url_pattern or r"https://github\.com[^\s\)\]>\"']+/pull/\d+"
-        )
+        # Compile the PR URL regex once at construction time so callers get a
+        # fast ValueError on a bad pattern rather than a silent hang at runtime,
+        # and so we avoid recompiling on every _run_pr_creator call.
+        try:
+            self._pr_url_re: re.Pattern[str] = re.compile(
+                pr_url_pattern or r"https://github\.com[^\s\)\]>\"']+/pull/\d+"
+            )
+        except re.error as exc:
+            raise ValueError(f"Invalid pr_url_pattern: {exc}") from exc
         if self._max_verify < 1:
             raise ValueError("max_verify_attempts must be >= 1")
         if self._max_review < 1:
@@ -274,6 +279,14 @@ class Orchestrator:
             asyncio.TimeoutError: If the agent does not respond within the timeout.
         """
         return await asyncio.wait_for(agent.run(prompt), timeout=self._timeout)
+
+    @staticmethod
+    def _quality_gate_passed(output: str) -> bool:
+        """Return True iff the programmer output contains an explicit QUALITY GATE: PASS signal."""
+        upper = output.upper()
+        if "QUALITY GATE: FAIL" in upper:
+            return False
+        return "QUALITY GATE: PASS" in upper
 
     async def _run_clarifier(
         self, run: PipelineRun, issue_text: str
@@ -401,6 +414,14 @@ class Orchestrator:
                         return False
                     # Reset to base_prompt to avoid unbounded prompt growth across retries.
                     prompt = f"{base_prompt}\n\n<error>\nPrevious attempt returned empty output.\n</error>\nPlease provide implementation."
+                    continue
+                if not self._quality_gate_passed(output):
+                    state.status = "failed"
+                    state.error = "Programmer quality gate did not pass"
+                    if attempt >= self._max_verify:
+                        run.halt("programmer", "Programmer quality gate failed after all attempts")
+                        return False
+                    prompt = f"{base_prompt}\n\n<error>\nQuality gate did not pass. Please fix all errors and re-run the quality gate.\n</error>\nPlease retry."
                     continue
                 state.status = "complete"
                 run.complete(f"programmer (attempt {attempt})")
@@ -539,7 +560,7 @@ class Orchestrator:
             # links ([text](url)), angle-bracket wrapping, etc.
             # By default the regex matches github.com only. Pass pr_url_pattern
             # to the Orchestrator constructor to support GitHub Enterprise hosts.
-            match = re.search(self._pr_url_pattern, output)
+            match = self._pr_url_re.search(output)
             pr_url: str | None = match.group(0) if match else None
             if pr_url is None:
                 state.status = "failed"

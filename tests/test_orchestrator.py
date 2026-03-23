@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -498,6 +498,24 @@ class TestProgrammerStage:
         assert result.status == "HALTED"
         assert call_count == 2
 
+    async def test_halts_when_programmer_quality_gate_fails(self):
+        orc = _make_orchestrator(
+            programmer=_stub("QUALITY GATE: FAIL\nBuild: 3 errors"),
+            max_verify_attempts=1,
+        )
+        result = await orc.run("issue")
+        assert result.status == "HALTED"
+
+    async def test_retries_when_programmer_quality_gate_fails_then_passes(self):
+        fail_then_pass = AsyncMock(spec=AgentRunner)
+        fail_then_pass.run = AsyncMock(
+            side_effect=["QUALITY GATE: FAIL\nBuild error", "QUALITY GATE: PASS"]
+        )
+        orc = _make_orchestrator(programmer=fail_then_pass, max_verify_attempts=3)
+        result = await orc.run("issue")
+        assert result.status == "COMPLETE"
+        assert fail_then_pass.run.await_count == 2
+
 
 # ---------------------------------------------------------------------------
 # Test team — parallel execution and skip rules
@@ -715,6 +733,16 @@ class TestReviewCycle:
         )
         result = await orc.run("issue")
         assert result.status == "HALTED"
+
+    async def test_halts_when_validate_review_gate_raises_value_error(self):
+        orc = _make_orchestrator()
+        with patch(
+            "src.pipeline.orchestrator.validate_review_gate",
+            side_effect=ValueError("bad verdict: UNKNOWN"),
+        ):
+            result = await orc.run("issue")
+        assert result.status == "HALTED"
+        assert "bad verdict" in result.notes
 
 
 # ---------------------------------------------------------------------------
