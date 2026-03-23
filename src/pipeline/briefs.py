@@ -38,7 +38,7 @@ class EnrichedContext(BaseModel):
     labels: list[str] = Field(default_factory=list)
     pipeline_stage: str = ""
 
-    def to_context_payload(self) -> dict[str, Any]:
+    def to_context_payload(self) -> dict[str, str | list[str]]:
         """Return a JSON-serialisable dict of the full context payload.
 
         This is the canonical form passed between pipeline agents.  The output
