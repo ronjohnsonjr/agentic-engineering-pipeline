@@ -70,6 +70,10 @@ class LinearPoller:
         self._on_issue = on_issue
         self._poll_interval = poll_interval
         self._ready_status = ready_status
+        # NOTE: deduplication is in-process only. If the poller restarts while an
+        # issue is still being processed, it will be dispatched again. Add a
+        # persistent store (e.g. Redis or a database) or an idempotency guard in
+        # the on_issue callback if duplicate runs are unacceptable.
         self._seen: set[str] = set()
 
     async def poll_once(self) -> list[PollResult]:

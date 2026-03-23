@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 class ClarifierBrief(BaseModel):
     verdict: Literal["CLEAR", "NEEDS_CLARITY"]
     questions: list[str] = Field(default_factory=list)
+    # Default 1.0 = fully confident; gate rejects values below CLARIFIER_CONFIDENCE_THRESHOLD (0.85).
+    confidence_score: float = Field(default=1.0)
 
 
 class ResearchBrief(BaseModel):

@@ -410,7 +410,11 @@ class Orchestrator:
                     return False
                 # Carry the error context forward so the next attempt can fix it.
                 # Wrap in a delimiter so the model treats it as plain error text.
-                prompt = f"{prompt}\n\n<error>\n{str(exc)[:500]}\n</error>\nPlease fix the error above and retry."
+                # Use the tail of the error (last 2000 chars) so stack-trace endings
+                # are preserved rather than truncated from the front.
+                _exc_str = str(exc)
+                _exc_excerpt = _exc_str[-2000:] if len(_exc_str) > 2000 else _exc_str
+                prompt = f"{prompt}\n\n<error>\n{_exc_excerpt}\n</error>\nPlease fix the error above and retry."
 
     async def _run_test_team(self, run: PipelineRun) -> bool:
         """Run unit, backend, and frontend testers in parallel.
@@ -500,10 +504,16 @@ class Orchestrator:
         try:
             output = await self._call_agent(self._pr_creator, "Create the pull request.")
             state.output = output
-            # Extract PR URL from the output; regex handles plain URLs, markdown
-            # links ([text](url)), angle-bracket wrapping, etc.
-            match = re.search(r"https://github\.com[^\s\)\]>\"']+/pull/\d+", output)
-            pr_url: str | None = match.group(0).rstrip(".,)") if match else None
+            # Extract PR URL from the output. Anchoring at owner/repo/pull/<N>
+            # reconstructs the canonical URL, avoiding query params or sub-paths.
+            match = re.search(
+                r"https://github\.com/([^/\s]+)/([^/\s]+)/pull/(\d+)", output
+            )
+            pr_url: str | None = (
+                f"https://github.com/{match.group(1)}/{match.group(2)}/pull/{match.group(3)}"
+                if match
+                else None
+            )
             if pr_url is None:
                 state.status = "failed"
                 state.error = "No pull request URL found in output"
@@ -559,9 +569,10 @@ class Orchestrator:
                 run.complete(f"reviewer (cycle {cycle})")
                 return
 
-            # Gate not passed — run remediator then loop back to reviewer
+            # Gate not passed — run remediator then loop back to reviewer.
+            # Do NOT call run.complete() here: completed_stages tracks successful
+            # completions only; the stage visit is recorded via run.record() above.
             reviewer_state.status = "changes_required"
-            run.complete(f"reviewer (cycle {cycle})")
 
             rem_state = AgentRunState(
                 stage="remediator", status="running", attempt=cycle

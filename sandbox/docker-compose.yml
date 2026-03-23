@@ -17,6 +17,16 @@ services:
     image: docker:24-dind
     privileged: true
     environment:
+      # TLS is intentionally disabled for this sandbox environment.
+      # Accepted risk: Docker API traffic between agent and dind travels
+      # unencrypted over the isolated sandbox-net bridge. This is acceptable
+      # because: (1) sandbox-net is a local bridge used for dev/CI only,
+      # (2) no production secrets or internal APIs are attached to this network,
+      # (3) enabling TLS requires cert distribution between services which adds
+      # significant operational complexity for a sandboxed dev environment.
+      # If the sandbox is ever exposed to untrusted multi-tenant environments,
+      # enable TLS: set DOCKER_TLS_CERTDIR=/certs and DOCKER_HOST=tcp://dind:2376
+      # with DOCKER_TLS_VERIFY=1 in the agent service.
       DOCKER_TLS_CERTDIR: ""
     networks:
       - sandbox-net
