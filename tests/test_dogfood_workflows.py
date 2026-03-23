@@ -2,7 +2,6 @@
 
 import yaml
 import pytest
-from pathlib import Path
 from tests.conftest import WORKFLOWS_DIR, DOGFOOD_WORKFLOW_NAMES
 
 

@@ -25,20 +25,24 @@ PIPELINE_STATES: list[str] = [
 ]
 
 BLOCKED_STATE = "Blocked"
+NEEDS_CLARIFICATION_STATE = "Needs Clarification"
 
 # Valid transitions per source state.
 # Any non-Done state can move to Blocked (failure path); Done is terminal.
 # Forward movement follows the pipeline order; some backward steps are
 # allowed for remediation cycles.
+# Needs Clarification is a side-path off Ready for Dev when the clarifier
+# requires human input before proceeding.
 VALID_TRANSITIONS: dict[str, list[str]] = {
-    "Backlog":       ["Ready for Dev", BLOCKED_STATE],
-    "Ready for Dev": ["Triage",        BLOCKED_STATE],
-    "Triage":        ["In Progress",   BLOCKED_STATE],
-    "In Progress":   ["In Testing",    BLOCKED_STATE],
-    "In Testing":    ["In Review", "In Progress", BLOCKED_STATE],
-    "In Review":     ["Done", "In Testing",       BLOCKED_STATE],
-    "Done":          [],
-    BLOCKED_STATE:   ["Triage", "In Progress"],
+    "Backlog":                    ["Ready for Dev",             BLOCKED_STATE],
+    "Ready for Dev":              ["Triage", NEEDS_CLARIFICATION_STATE, BLOCKED_STATE],
+    NEEDS_CLARIFICATION_STATE:    ["Triage",                    BLOCKED_STATE],
+    "Triage":                     ["In Progress",               BLOCKED_STATE],
+    "In Progress":                ["In Testing",                BLOCKED_STATE],
+    "In Testing":                 ["In Review", "In Progress",  BLOCKED_STATE],
+    "In Review":                  ["Done", "In Testing",        BLOCKED_STATE],
+    "Done":                       [],
+    BLOCKED_STATE:                ["Triage", "In Progress"],
 }
 
 AUTHORIZED_ACTOR = "orchestrator"
@@ -88,6 +92,7 @@ class StateMachine:
         agent_name: str | None = None,
         duration_seconds: float | None = None,
         outcome: str | None = None,
+        pr_url: str = "",
     ) -> None:
         """Transition the issue to *to_state* and post a timestamped comment.
 
@@ -141,6 +146,7 @@ class StateMachine:
             agent_name=agent_name,
             duration_seconds=duration_seconds,
             outcome=outcome,
+            pr_url=pr_url,
         )
         await self._client.add_comment(self._issue_id, comment)
 
@@ -176,6 +182,7 @@ def _build_transition_comment(
     agent_name: str | None = None,
     duration_seconds: float | None = None,
     outcome: str | None = None,
+    pr_url: str = "",
 ) -> str:
     """Build the audit comment posted to Linear on each state change."""
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -192,6 +199,8 @@ def _build_transition_comment(
         lines.append(f"- Outcome: `{outcome}`")
     if duration_seconds is not None:
         lines.append(f"- Duration: `{duration_seconds:.1f}s`")
+    if pr_url:
+        lines.append(f"- PR: {pr_url}")
     if to_state == BLOCKED_STATE or attempt_count > 1:
         lines.append(f"- Attempt: {attempt_count}")
     if to_state == BLOCKED_STATE and error_output:

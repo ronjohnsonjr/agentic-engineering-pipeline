@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from src.pipeline.briefs import (
     ClarifierBrief,
+    EnrichedContext,
     ImplementationPlan,
     PipelineResult,
     PlanStep,
@@ -44,6 +45,78 @@ def test_clarifier_brief_questions_default_empty():
     assert brief.questions == []
 
 
+def test_clarifier_brief_confidence_score_default():
+    brief = ClarifierBrief(verdict="CLEAR")
+    assert brief.confidence_score == 1.0
+
+
+def test_clarifier_brief_confidence_score_explicit():
+    brief = ClarifierBrief(verdict="CLEAR", confidence_score=0.92)
+    assert brief.confidence_score == 0.92
+
+
+def test_clarifier_brief_confidence_score_needs_clarity():
+    brief = ClarifierBrief(
+        verdict="NEEDS_CLARITY",
+        questions=["What is the scope?"],
+        confidence_score=0.70,
+    )
+    assert brief.confidence_score == 0.70
+
+
+def test_clarifier_brief_confidence_score_out_of_range_high():
+    with pytest.raises(ValidationError):
+        ClarifierBrief(verdict="CLEAR", confidence_score=1.5)
+
+
+def test_clarifier_brief_confidence_score_out_of_range_low():
+    with pytest.raises(ValidationError):
+        ClarifierBrief(verdict="CLEAR", confidence_score=-0.1)
+
+
+def test_clarifier_brief_confidence_score_boundary_pass_threshold():
+    # 0.85 is the agent-level pass threshold (see agent prompt); the Pydantic model
+    # only validates the 0.0–1.0 range, not verdict/score consistency
+    brief = ClarifierBrief(verdict="CLEAR", confidence_score=0.85)
+    assert brief.confidence_score == 0.85
+
+
+def test_clarifier_brief_enriched_context_default():
+    brief = ClarifierBrief(verdict="CLEAR")
+    ctx = brief.enriched_context
+    assert ctx.linear_issue_id == ""
+    assert ctx.labels == []
+    assert ctx.pipeline_stage == ""
+    assert ctx.linked_documents == []
+    assert ctx.assumptions == []
+    assert ctx.architectural_constraints == []
+
+
+def test_clarifier_brief_enriched_context_populated():
+    ctx = EnrichedContext(
+        linear_issue_id="AGE-87",
+        labels=["phase-1", "foundation"],
+        pipeline_stage="Clarifier (Stage 2)",
+        linked_documents=["https://linear.app/example/issue/AGE-87"],
+        assumptions=["No breaking API changes required"],
+        architectural_constraints=["Must not modify examples/consumer-workflows/"],
+    )
+    brief = ClarifierBrief(verdict="CLEAR", confidence_score=0.90, enriched_context=ctx)
+    assert brief.enriched_context.linear_issue_id == "AGE-87"
+    assert brief.enriched_context.labels == ["phase-1", "foundation"]
+    assert brief.enriched_context.pipeline_stage == "Clarifier (Stage 2)"
+    assert len(brief.enriched_context.linked_documents) == 1
+    assert len(brief.enriched_context.assumptions) == 1
+    assert len(brief.enriched_context.architectural_constraints) == 1
+
+
+def test_enriched_context_standalone():
+    ctx = EnrichedContext(linear_issue_id="AGE-42", labels=["local"])
+    assert ctx.linear_issue_id == "AGE-42"
+    assert ctx.labels == ["local"]
+    assert ctx.pipeline_stage == ""
+
+
 # ---------------------------------------------------------------------------
 # ResearchBrief
 # ---------------------------------------------------------------------------
@@ -54,7 +127,12 @@ def test_research_brief_minimal():
     assert brief.summary == "Found relevant files."
     assert brief.conventions == []
     assert brief.relevant_files == []
+    assert brief.affected_files == []
+    assert brief.interfaces == []
+    assert brief.existing_tests == []
+    assert brief.patterns == []
     assert brief.risks == []
+    assert brief.open_questions == []
 
 
 def test_research_brief_full():
@@ -62,17 +140,36 @@ def test_research_brief_full():
         summary="The codebase uses layered architecture.",
         conventions=["snake_case", "no global state"],
         relevant_files=["src/api.py", "src/models.py"],
+        affected_files=["src/api.py:10-40 -- handles routing"],
+        interfaces=["def handle(req: Request) -> Response"],
+        existing_tests=["tests/test_api.py -- covers routing"],
+        patterns=["Use dependency injection (src/services.py:1-20)"],
         risks=["Changing models may break serialisation"],
+        open_questions=["Should the endpoint require auth?"],
     )
     assert len(brief.conventions) == 2
     assert len(brief.relevant_files) == 2
+    assert len(brief.affected_files) == 1
+    assert len(brief.interfaces) == 1
+    assert len(brief.existing_tests) == 1
+    assert len(brief.patterns) == 1
     assert len(brief.risks) == 1
+    assert len(brief.open_questions) == 1
 
 
 def test_research_brief_empty_summary_is_valid():
     # Pydantic allows empty strings; gate validation enforces non-empty
     brief = ResearchBrief(summary="")
     assert brief.summary == ""
+
+
+def test_research_brief_new_fields_default_empty():
+    brief = ResearchBrief(summary="Minimal.", relevant_files=["src/foo.py"])
+    assert brief.affected_files == []
+    assert brief.interfaces == []
+    assert brief.existing_tests == []
+    assert brief.patterns == []
+    assert brief.open_questions == []
 
 
 # ---------------------------------------------------------------------------
