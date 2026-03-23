@@ -424,6 +424,22 @@ class TestProgrammerStage:
         with pytest.raises(ValueError, match="max_review_cycles"):
             _make_orchestrator(max_review_cycles=0)
 
+    async def test_retries_on_empty_output_then_succeeds(self):
+        empty_then_pass = AsyncMock(spec=AgentRunner)
+        empty_then_pass.run = AsyncMock(side_effect=["", "QUALITY GATE: PASS"])
+        orc = _make_orchestrator(programmer=empty_then_pass, max_verify_attempts=3)
+        result = await orc.run("issue")
+        assert result.status == "COMPLETE"
+        assert empty_then_pass.run.await_count == 2
+
+    async def test_halts_after_all_empty_output_attempts(self):
+        always_empty = AsyncMock(spec=AgentRunner)
+        always_empty.run = AsyncMock(return_value="")
+        orc = _make_orchestrator(programmer=always_empty, max_verify_attempts=2)
+        result = await orc.run("issue")
+        assert result.status == "HALTED"
+        assert always_empty.run.await_count == 2
+
     async def test_halts_on_timeout_after_max_attempts(self):
         call_count = 0
 

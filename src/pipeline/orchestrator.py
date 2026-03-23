@@ -43,7 +43,7 @@ from src.pipeline.parser import (
 # Defaults
 # ---------------------------------------------------------------------------
 
-DEFAULT_TIMEOUT_SECONDS: float = 300.0  # 5 min per agent call
+DEFAULT_TIMEOUT_SECONDS: float = 300.0  # 5 min per agent call; callers can lower or raise per-stage via timeout_seconds
 DEFAULT_MAX_VERIFY_ATTEMPTS: int = 3    # programmer fix-verify cycles
 DEFAULT_MAX_REVIEW_CYCLES: int = 3      # reviewer-remediator cycles
 
@@ -210,7 +210,7 @@ class Orchestrator:
         before the next stage begins. On any gate failure or unrecoverable
         error the pipeline halts and returns a ``HALTED`` result.
         """
-        run = PipelineRun(issue=issue_text[:120] + ("..." if len(issue_text) > 120 else ""))
+        run = PipelineRun(issue=issue_text)
 
         # ------------------------------------------------------------------
         # Stage 1 — Clarify
@@ -531,7 +531,7 @@ class Orchestrator:
             # By default the regex matches github.com only. Pass pr_url_pattern
             # to the Orchestrator constructor to support GitHub Enterprise hosts.
             match = re.search(self._pr_url_pattern, output)
-            pr_url: str | None = match.group(0).rstrip(".,)") if match else None
+            pr_url: str | None = match.group(0) if match else None
             if pr_url is None:
                 state.status = "failed"
                 state.error = "No pull request URL found in output"
@@ -601,6 +601,7 @@ class Orchestrator:
             # Skip the remediator on the final cycle — there is no subsequent reviewer
             # pass to re-evaluate the fixes, so running it just wastes an agent call.
             if cycle >= self._max_review:
+                run.skip("remediator", "final cycle — no subsequent reviewer pass")
                 break
 
             rem_state = AgentRunState(
