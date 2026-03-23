@@ -114,6 +114,12 @@ def parse_enriched_context(text: str) -> EnrichedContext:
     """
     body = _extract_section(text, "ENRICHED CONTEXT")
     if not body:
+        # NOTE: a completely absent section and a present-but-empty section are
+        # indistinguishable here — both return a default EnrichedContext().  This
+        # is intentional: downstream agents receive a stable, typed object either
+        # way.  If the pipeline ever needs to gate on "did the clarifier produce
+        # context?", add an `Optional[EnrichedContext]` return type or a sentinel
+        # field (e.g. `context_present: bool`) instead of adding heuristics here.
         return EnrichedContext()
 
     def _sub_block(label: str) -> list[str]:

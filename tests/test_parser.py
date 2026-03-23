@@ -163,8 +163,7 @@ Parsed Requirements:
 - Req
 """
     ctx = parse_enriched_context(text)
-    assert "First line" in ctx.issue_body
-    assert "Second line" in ctx.issue_body
+    assert ctx.issue_body == "First line.\n  Second line (continuation)."
     assert "Pipeline Stage" not in ctx.issue_body  # must not bleed into next field
     assert ctx.pipeline_stage == "Stage 1"
 

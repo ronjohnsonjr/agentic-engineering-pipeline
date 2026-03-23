@@ -215,6 +215,14 @@ def test_enriched_context_to_context_payload_json_is_sorted():
     assert parsed_keys == sorted(parsed_keys)
 
 
+def test_enriched_context_to_context_payload_json_escapes_non_ascii():
+    """Non-ASCII characters must be escaped as \\uXXXX (ensure_ascii=True default)."""
+    ctx = EnrichedContext(issue_title="Ré")
+    json_str = ctx.to_context_payload_json()
+    assert "\\u" in json_str  # non-ASCII must be escaped
+    assert "Ré" not in json_str
+
+
 def test_enriched_context_payload_contains_all_ac_fields():
     """Context payload must expose all Acceptance Criteria fields."""
     ctx = EnrichedContext()
