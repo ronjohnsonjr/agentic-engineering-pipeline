@@ -114,7 +114,10 @@ def parse_enriched_context(text: str) -> EnrichedContext:
     # Issue Body may span multiple lines; capture everything after "Issue Body:"
     # up to the next field or bullet section.
     issue_body_match = re.search(
-        r"Issue Body\s*:\s*(.+?)(?=\n\w[^\n]*:|\Z)",
+        r"Issue Body\s*:\s*(.+?)(?=\n(?:Pipeline Stage|Linear Issue ID|Issue Title"
+        r"|Parsed Requirements|Business Requirements|Technical Acceptance Criteria"
+        r"|Dependencies|Related Issues|Linked Documents|Relevant Code Paths"
+        r"|Architectural Constraints|Assumptions|Labels)\s*:|\Z)",
         body,
         re.IGNORECASE | re.DOTALL,
     )

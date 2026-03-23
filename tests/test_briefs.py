@@ -172,8 +172,10 @@ def test_enriched_context_to_context_payload_returns_dict():
 
 def test_enriched_context_to_context_payload_is_deterministic():
     kwargs = dict(linear_issue_id="AGE-94", dependencies=["AGE-87"], labels=["local"])
-    assert EnrichedContext(**kwargs).to_context_payload() == EnrichedContext(**kwargs).to_context_payload()
-    assert EnrichedContext(**kwargs).to_context_payload_json() == EnrichedContext(**kwargs).to_context_payload_json()
+    ctx1 = EnrichedContext(**kwargs)
+    ctx2 = EnrichedContext(**kwargs)
+    assert ctx1.to_context_payload() == ctx2.to_context_payload()
+    assert ctx1.to_context_payload_json() == ctx2.to_context_payload_json()
 
 
 def test_enriched_context_to_context_payload_json_is_string():

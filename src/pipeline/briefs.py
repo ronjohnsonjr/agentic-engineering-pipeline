@@ -50,7 +50,7 @@ class EnrichedContext(BaseModel):
 
     def to_context_payload_json(self) -> str:
         """Return the context payload as a compact JSON string."""
-        return json.dumps(self.to_context_payload(), sort_keys=True)
+        return json.dumps(self.to_context_payload(), sort_keys=True, separators=(",", ":"))
 
 
 class ClarifierBrief(BaseModel):
