@@ -141,7 +141,7 @@ def parse_enriched_context(text: str) -> EnrichedContext:
     # programmatic alternation with an explicit `ClassVar[list[str]]` on
     # `EnrichedContext` that maps field keys to their canonical text labels.
     issue_body_match = re.search(
-        rf"Issue Body\s*:\s*(.+?)(?=\n(?:{_ENRICHED_CONTEXT_FIELD_LABELS})\s*:|\Z)",
+        rf"Issue Body\s*:[ \t]*(.*?)(?=\n(?:{_ENRICHED_CONTEXT_FIELD_LABELS})\s*:|\Z)",
         body,
         re.IGNORECASE | re.DOTALL,
     )
@@ -362,7 +362,9 @@ def parse_test_result(text: str) -> TestResult:
             coverage_pct = float(cov_match.group())
 
     failures_match = re.search(
-        r"Failures\s*:\s*\n((?:\s*[-*].+\n?)*)", body, re.IGNORECASE
+        r"^Failures\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+        body,
+        re.IGNORECASE | re.MULTILINE,
     )
     failures = _bullet_list(failures_match.group(1)) if failures_match else []
 
@@ -455,13 +457,17 @@ def parse_pipeline_result(text: str) -> PipelineResult:
     pr_url = pr_url_raw if pr_url_raw.startswith("http") else None
 
     stages_match = re.search(
-        r"Stages Completed\s*:\s*\n((?:\s*[-*].+\n?)*)", body, re.IGNORECASE
+        r"^Stages Completed\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+        body,
+        re.IGNORECASE | re.MULTILINE,
     )
     stages_completed = _bullet_list(stages_match.group(1)) if stages_match else []
 
     skipped: dict[str, str] = {}
     skipped_match = re.search(
-        r"Skipped\s*:\s*\n((?:\s*[-*].+\n?)*)", body, re.IGNORECASE
+        r"^Skipped\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+        body,
+        re.IGNORECASE | re.MULTILINE,
     )
     if skipped_match:
         for item in _bullet_list(skipped_match.group(1)):

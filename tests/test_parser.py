@@ -257,6 +257,14 @@ Pipeline Stage: Stage 1
     assert ctx.pipeline_stage == "Stage 1"
 
 
+def test_parse_enriched_context_empty_issue_body():
+    """issue_body returns "" when Issue Body: is present but has no value."""
+    text = "## ENRICHED CONTEXT\n\nIssue Body:\nPipeline Stage: Stage 1\n"
+    ctx = parse_enriched_context(text)
+    assert ctx.issue_body == ""
+    assert ctx.pipeline_stage == "Stage 1"
+
+
 def test_parse_enriched_context_partial_fields():
     text = """\
 ## ENRICHED CONTEXT
