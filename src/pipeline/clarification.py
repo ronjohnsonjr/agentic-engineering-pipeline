@@ -115,7 +115,7 @@ class ClarificationLoop:
             return ClarificationResult(
                 resolved=True,
                 rounds_used=round_num - 1,
-                history=self._history,
+                history=list(self._history),
             )
 
         if round_num > self.MAX_ROUNDS:
@@ -123,7 +123,7 @@ class ClarificationLoop:
             return ClarificationResult(
                 resolved=False,
                 rounds_used=self.MAX_ROUNDS,
-                history=self._history,
+                history=list(self._history),
                 escalated=True,
             )
 
@@ -145,6 +145,7 @@ class ClarificationLoop:
             c
             for c in comments
             if "clarification" in c.get("body", "").lower()
+            and not c.get("body", "").startswith("**Clarification Required**")
         ]
 
     # ------------------------------------------------------------------

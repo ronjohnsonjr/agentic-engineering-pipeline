@@ -16,12 +16,10 @@ from src.pipeline.briefs import (
     ReviewVerdict,
     TestResult,
 )
+from src.pipeline.clarification import CONFIDENCE_THRESHOLD as CLARIFIER_CONFIDENCE_THRESHOLD
 
 if TYPE_CHECKING:
     from src.integrations.linear.progress import PipelineProgressReporter
-
-
-CLARIFIER_CONFIDENCE_THRESHOLD: float = 0.85
 
 
 async def validate_clarifier_gate(

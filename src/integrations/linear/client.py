@@ -91,7 +91,7 @@ class LinearClient:
         query = """
         query GetIssueComments($id: String!) {
           issue(id: $id) {
-            comments {
+            comments(first: 100) {
               nodes {
                 id
                 body
@@ -103,7 +103,10 @@ class LinearClient:
         }
         """
         data = await self._query(query, {"id": issue_id})
-        return data["issue"]["comments"]["nodes"]
+        issue = data["issue"]
+        if issue is None:
+            return []
+        return issue["comments"]["nodes"]
 
     async def get_team_states(self, team_id: str) -> list[dict]:
         query = """
