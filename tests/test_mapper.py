@@ -1,4 +1,3 @@
-import pytest
 
 from src.integrations.linear.mapper import (
     PipelineResult,
@@ -100,3 +99,27 @@ class TestMapPipelineStateToLinear:
 
     def test_case_insensitive(self):
         assert map_pipeline_state_to_linear("REVIEW", "SUCCESS") == "Done"
+
+    def test_clarify_success_maps_to_triage(self):
+        assert map_pipeline_state_to_linear("clarify", "success") == "Triage"
+
+    def test_clarify_failure_maps_to_blocked(self):
+        assert map_pipeline_state_to_linear("clarify", "failure") == "Blocked"
+
+    def test_research_success_maps_to_triage(self):
+        assert map_pipeline_state_to_linear("research", "success") == "Triage"
+
+    def test_research_failure_maps_to_blocked(self):
+        assert map_pipeline_state_to_linear("research", "failure") == "Blocked"
+
+    def test_plan_failure_maps_to_blocked(self):
+        assert map_pipeline_state_to_linear("plan", "failure") == "Blocked"
+
+    def test_pr_created_success_maps_to_in_review(self):
+        assert map_pipeline_state_to_linear("pr-created", "success") == "In Review"
+
+    def test_remediation_success_maps_to_in_progress(self):
+        assert map_pipeline_state_to_linear("remediation", "success") == "In Progress"
+
+    def test_remediation_failure_maps_to_blocked(self):
+        assert map_pipeline_state_to_linear("remediation", "failure") == "Blocked"

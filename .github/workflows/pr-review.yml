@@ -1,5 +1,8 @@
 # Reusable workflow: PR Review Orchestrator
 # Triggers the full Copilot + Claude collaborative review cycle on a PR.
+# Decomposes the review into focused sub-agent steps so that Copilot polling
+# happens in pure bash (zero LLM turns) and each Claude invocation has a
+# narrow, well-defined task.
 #
 # Usage in consuming repo:
 #   uses: <org>/agentic-ci/.github/workflows/pr-review.yml@main
@@ -24,7 +27,7 @@ on:
       claude_args:
         description: "Additional CLI args passed to claude-code-action"
         type: string
-        default: "--dangerously-skip-permissions --max-turns 40"
+        default: "--dangerously-skip-permissions --max-turns 50"
       pr_number:
         description: "PR number to review (required when triggered via workflow_dispatch)"
         type: number
@@ -45,12 +48,13 @@ jobs:
     name: Agentic PR Review
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PR_NUM: ${{ inputs.pr_number || github.event.pull_request.number }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Resolve PR ref
         id: pr-ref
         if: inputs.pr_number != 0
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           sha=$(gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number }} --jq '.head.sha')
           echo "sha=$sha" >> $GITHUB_OUTPUT
@@ -61,73 +65,136 @@ jobs:
           fetch-depth: 0
           ref: ${{ steps.pr-ref.outputs.sha || github.event.pull_request.head.sha || github.sha }}
 
-      - name: Run Claude PR Review Orchestrator
+      # ── Sub-agent 0: Request Copilot reviewer (pure bash) ──────────────
+      - name: Request Copilot reviewer
+        id: request-copilot
+        run: |
+          COPILOT_LOGINS="copilot github-copilot[bot] copilot-pull-request-reviewer[bot] github-code-quality"
+
+          # Check if Copilot already reviewed or is requested
+          reviews=$(gh api repos/${{ github.repository }}/pulls/${{ env.PR_NUM }}/reviews 2>/dev/null || echo '[]')
+          for login in $COPILOT_LOGINS; do
+            if echo "$reviews" | jq -e --arg l "$login" '.[] | select(.user.login == $l)' >/dev/null 2>&1; then
+              echo "copilot_already_active=true" >> $GITHUB_OUTPUT
+              echo "Copilot ($login) has already reviewed."
+              exit 0
+            fi
+          done
+
+          requested=$(gh api repos/${{ github.repository }}/pulls/${{ env.PR_NUM }}/requested_reviewers 2>/dev/null || echo '{}')
+          for login in $COPILOT_LOGINS; do
+            if echo "$requested" | jq -e --arg l "$login" '.users[]? | select(.login == $l)' >/dev/null 2>&1; then
+              echo "copilot_already_active=true" >> $GITHUB_OUTPUT
+              echo "Copilot ($login) is already a requested reviewer."
+              exit 0
+            fi
+          done
+
+          echo "copilot_already_active=false" >> $GITHUB_OUTPUT
+
+          # Request Copilot
+          if gh api repos/${{ github.repository }}/pulls/${{ env.PR_NUM }}/requested_reviewers \
+               -X POST -f 'reviewers[]=Copilot' >/dev/null 2>&1; then
+            echo "Requested Copilot as reviewer via API."
+          elif gh pr edit "${{ env.PR_NUM }}" --add-reviewer "Copilot" 2>/dev/null; then
+            echo "Requested Copilot as reviewer via CLI."
+          else
+            echo "Could not request Copilot — it may be auto-triggered."
+          fi
+
+      # ── Sub-agent 1: Poll for Copilot review (pure bash) ──────────────
+      - name: Wait for Copilot review
+        id: copilot-poll
+        run: |
+          COPILOT_LOGINS='copilot github-copilot[bot] copilot-pull-request-reviewer[bot] github-code-quality'
+          MAX_WAIT=$(( ${{ inputs.max_copilot_wait_minutes }} * 60 ))
+          POLL_INTERVAL=20
+          elapsed=0
+
+          echo "Polling for Copilot 'Reviewed changes' (up to ${{ inputs.max_copilot_wait_minutes }}m)..."
+
+          while [ $elapsed -lt $MAX_WAIT ]; do
+            reviews=$(gh api repos/${{ github.repository }}/pulls/${{ env.PR_NUM }}/reviews 2>/dev/null || echo '[]')
+            for login in $COPILOT_LOGINS; do
+              match=$(echo "$reviews" | jq -r --arg l "$login" \
+                '.[] | select(.user.login == $l and (.body | contains("Reviewed changes"))) | .id' \
+                2>/dev/null | head -1)
+              if [ -n "$match" ]; then
+                echo "copilot_reviewed=true" >> $GITHUB_OUTPUT
+                echo "Copilot review found from $login (review ID: $match)."
+                exit 0
+              fi
+            done
+            sleep $POLL_INTERVAL
+            elapsed=$((elapsed + POLL_INTERVAL))
+            echo "  ...waited ${elapsed}s / ${MAX_WAIT}s"
+          done
+
+          echo "copilot_reviewed=false" >> $GITHUB_OUTPUT
+          echo "Copilot wait window expired. Proceeding with Claude-only review."
+
+      # ── Sub-agent 2: Claude performs code review and posts comments ────
+      - name: "Claude: Review code and post comments"
+        id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          show_full_output: true
           allowed_bots: 'claude'
           additional_permissions: |
             actions: read
           claude_args: ${{ inputs.claude_args }}
           prompt: |
-            You are running an automated PR review workflow on PR #${{ inputs.pr_number || github.event.pull_request.number }}.
-            Do NOT exit until every step below is complete, including the final summary comment.
+            You are running sub-agent 2 of the PR review pipeline on PR #${{ env.PR_NUM }}.
+            Your ONLY job is to review the code and post inline comments. Do NOT address
+            existing threads, do NOT commit, do NOT push, do NOT post a summary.
 
-            ## Step 1 — Request Copilot as a reviewer
+            ## Read the diff
 
-            Check whether Copilot has already been requested or has already reviewed:
             ```bash
-            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/requested_reviewers
-            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/reviews
+            gh pr diff ${{ env.PR_NUM }}
             ```
-            If Copilot has not been requested and has not already reviewed, request it:
-            ```bash
-            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/requested_reviewers \
-              -X POST -f 'reviewers[]=Copilot'
-            ```
-            If that fails (Copilot may be a GitHub App), try:
-            ```bash
-            gh pr edit ${{ inputs.pr_number || github.event.pull_request.number }} --add-reviewer "Copilot"
-            ```
-            If both fail, note it and continue — Copilot may be auto-triggered.
 
-            ## Step 2 — Wait for Copilot's "Reviewed changes" overview
+            ## Conduct a thorough code review
 
-            Poll every 20 seconds, up to ${{ inputs.max_copilot_wait_minutes }} minutes.
-            On each poll, fetch all reviews:
-            ```bash
-            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/reviews
-            ```
-            You are waiting for a review whose `user.login` matches one of:
-            `copilot`, `github-copilot[bot]`, `copilot-pull-request-reviewer[bot]`,
-            `github-code-quality`
-            AND whose `body` contains the text "Reviewed changes".
+            Review the diff for: correctness, security, performance, readability,
+            test coverage gaps, and adherence to project conventions (read CLAUDE.md).
 
-            Do NOT proceed to Step 3 until this exact condition is met OR the wait window
-            expires. If the window expires without seeing "Reviewed changes", note the
-            timeout and proceed with only your own review in Step 3.
+            For each issue found, post an inline review comment.
+            Submit your review as COMMENT (never APPROVE or REQUEST_CHANGES).
 
-            ## Step 3 — Perform Claude's independent review
+            ## Agent override
 
-            Read the PR diff and all changed files:
-            ```bash
-            gh pr diff ${{ inputs.pr_number || github.event.pull_request.number }}
-            ```
-            Conduct a thorough code review. For each issue found, post an inline review
-            comment. Submit your review as COMMENT (never APPROVE or REQUEST_CHANGES).
+            If the repo contains `.claude/agents/pr-review-orchestrator.md`, read it
+            and follow its project-specific instructions. Those instructions take
+            precedence over the generic steps above for any conflicts.
 
-            ## Step 4 — Catalog all review threads with thread IDs
+      # ── Sub-agent 3: Claude catalogs and resolves all threads ──────────
+      - name: "Claude: Catalog and resolve review threads"
+        id: claude-resolve
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          show_full_output: true
+          allowed_bots: 'claude'
+          additional_permissions: |
+            actions: read
+          claude_args: ${{ inputs.claude_args }}
+          prompt: |
+            You are running sub-agent 3 of the PR review pipeline on PR #${{ env.PR_NUM }}.
+            Your job is to catalog all review threads, then address and resolve every one.
+            Do NOT post a summary comment — a later step handles that.
 
-            Fetch all review threads via GraphQL so you have the thread IDs needed to
-            resolve them after addressing each one:
+            ## Step 1 — Catalog all review threads with thread IDs
+
+            Fetch all review threads via GraphQL:
             ```bash
             OWNER=$(echo "${{ github.repository }}" | cut -d/ -f1)
             REPO=$(echo "${{ github.repository }}" | cut -d/ -f2)
-            PR_NUM=${{ inputs.pr_number || github.event.pull_request.number }}
             gh api graphql -f query="
               query {
                 repository(owner: \"$OWNER\", name: \"$REPO\") {
-                  pullRequest(number: $PR_NUM) {
+                  pullRequest(number: ${{ env.PR_NUM }}) {
                     reviewThreads(first: 100) {
                       nodes {
                         id
@@ -154,15 +221,15 @@ jobs:
               reply endpoint (`/pulls/{number}/comments/{databaseId}/replies`)
             - first-comment author login, file path, line, and body
 
-            Prioritize threads from Copilot (any of the bot logins above), then threads
+            Prioritize threads from Copilot (logins: `copilot`, `github-copilot[bot]`,
+            `copilot-pull-request-reviewer[bot]`, `github-code-quality`), then threads
             from other reviewers.
 
-            ## Step 5 — Address and resolve every Copilot thread
+            ## Step 2 — Address and resolve every thread
 
-            Process every unresolved thread whose first comment is from Copilot.
-            For EACH thread, do all three sub-steps:
+            For EACH unresolved thread, do all three sub-steps:
 
-            **5a. Choose an action:**
+            **2a. Choose an action:**
 
             FIX — the comment identifies a legitimate issue:
             - Apply the minimal code change.
@@ -174,14 +241,14 @@ jobs:
             DECLINE — incorrect suggestion or would degrade quality:
             - Reply: "Declined: [reasoning]."
 
-            **5b. Reply on the thread** using the REST API with the `databaseId` of
-            the first comment in the thread (the numeric integer from the GraphQL catalog):
+            **2b. Reply on the thread** using the REST API with the `databaseId` of
+            the first comment in the thread:
             ```bash
-            gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number || github.event.pull_request.number }}/comments/<databaseId>/replies \
+            gh api repos/${{ github.repository }}/pulls/${{ env.PR_NUM }}/comments/<databaseId>/replies \
               -X POST -f body="<your reply>"
             ```
 
-            **5c. Resolve the thread** using GraphQL immediately after replying:
+            **2c. Resolve the thread** using GraphQL immediately after replying:
             ```bash
             gh api graphql -f query="
               mutation {
@@ -192,14 +259,7 @@ jobs:
             "
             ```
 
-            Do not move to Step 6 until every Copilot thread has been replied to and resolved.
-
-            ## Step 6 — Address and resolve your own threads
-
-            Repeat Step 5 for any unresolved threads from your own review (Step 3).
-            Same FIX / ACKNOWLEDGE / DECLINE logic. Reply then resolve each thread.
-
-            ## Step 7 — Run quality checks
+            ## Step 3 — Quality checks
 
             After all fixes:
             - Makefile with `check` target: `make check`
@@ -211,21 +271,205 @@ jobs:
             "Reverted: quality gate failed — [first 10 lines of gate output].", then
             re-resolve the thread.
 
-            ## Step 8 — Commit and push
+            ## Step 4 — Commit and push
 
             Batch fixes into logical commits with conventional commit messages.
             Push to the PR branch.
 
-            ## Step 9 — Iterate (up to ${{ inputs.max_review_rounds }} rounds)
+            ## Rules
+            - Resolve every thread immediately after replying to it — never leave a
+              replied-to thread unresolved.
+            - Always reply ON the thread, never as a separate top-level comment.
+            - If a fix introduces test failures, revert it and decline with explanation.
+            - Use conventional commits for all fix commits.
+            - Respect project conventions from CLAUDE.md if present.
 
-            After pushing, poll up to ${{ inputs.max_copilot_wait_minutes }} minutes for a
-            new Copilot review whose body contains "Reviewed changes". If new unresolved
-            Copilot threads appear, repeat Steps 4–8. Stop if Copilot repeats identical
-            comment bodies (convergence).
+            ## Agent override
 
-            ## Step 10 — Post summary comment
+            If the repo contains `.claude/agents/pr-review-orchestrator.md`, read it
+            and follow its project-specific instructions. Those instructions take
+            precedence over the generic steps above for any conflicts.
 
-            Post a single top-level comment on the PR:
+      # ── Sub-agent 4: Poll for new Copilot review after push (iteration) ──
+      - name: Wait for Copilot re-review (iteration)
+        id: copilot-repoll
+        if: inputs.max_review_rounds > 1
+        run: |
+          COPILOT_LOGINS='copilot github-copilot[bot] copilot-pull-request-reviewer[bot] github-code-quality'
+          MAX_WAIT=$(( ${{ inputs.max_copilot_wait_minutes }} * 60 ))
+          POLL_INTERVAL=20
+          elapsed=0
+
+          # Count how many Copilot "Reviewed changes" reviews existed before this round
+          pre_count=$(gh api repos/${{ github.repository }}/pulls/${{ env.PR_NUM }}/reviews 2>/dev/null \
+            | jq '[.[] | select(
+                (.user.login == "copilot" or .user.login == "github-copilot[bot]" or
+                 .user.login == "copilot-pull-request-reviewer[bot]" or .user.login == "github-code-quality")
+                and (.body | contains("Reviewed changes"))
+              )] | length' 2>/dev/null || echo 0)
+
+          echo "Waiting for new Copilot review (currently $pre_count reviews)..."
+
+          while [ $elapsed -lt $MAX_WAIT ]; do
+            cur_count=$(gh api repos/${{ github.repository }}/pulls/${{ env.PR_NUM }}/reviews 2>/dev/null \
+              | jq '[.[] | select(
+                  (.user.login == "copilot" or .user.login == "github-copilot[bot]" or
+                   .user.login == "copilot-pull-request-reviewer[bot]" or .user.login == "github-code-quality")
+                  and (.body | contains("Reviewed changes"))
+                )] | length' 2>/dev/null || echo 0)
+            if [ "$cur_count" -gt "$pre_count" ]; then
+              echo "new_copilot_review=true" >> $GITHUB_OUTPUT
+              echo "New Copilot review detected ($cur_count > $pre_count)."
+              exit 0
+            fi
+            sleep $POLL_INTERVAL
+            elapsed=$((elapsed + POLL_INTERVAL))
+            echo "  ...waited ${elapsed}s / ${MAX_WAIT}s"
+          done
+
+          echo "new_copilot_review=false" >> $GITHUB_OUTPUT
+          echo "No new Copilot review. Skipping iteration."
+
+      # ── Sub-agent 5: Handle new threads from iteration (conditional) ───
+      - name: "Claude: Resolve new threads (round 2)"
+        id: claude-iterate
+        if: inputs.max_review_rounds > 1 && steps.copilot-repoll.outputs.new_copilot_review == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          show_full_output: true
+          allowed_bots: 'claude'
+          additional_permissions: |
+            actions: read
+          claude_args: ${{ inputs.claude_args }}
+          prompt: |
+            You are running sub-agent 5 (iteration round) of the PR review pipeline on
+            PR #${{ env.PR_NUM }}. A new Copilot review appeared after the first round of
+            fixes. Your job is to address ONLY the new unresolved threads.
+
+            ## Step 1 — Catalog unresolved threads
+
+            Fetch review threads via GraphQL:
+            ```bash
+            OWNER=$(echo "${{ github.repository }}" | cut -d/ -f1)
+            REPO=$(echo "${{ github.repository }}" | cut -d/ -f2)
+            gh api graphql -f query="
+              query {
+                repository(owner: \"$OWNER\", name: \"$REPO\") {
+                  pullRequest(number: ${{ env.PR_NUM }}) {
+                    reviewThreads(first: 100) {
+                      nodes {
+                        id
+                        isResolved
+                        comments(first: 10) {
+                          nodes {
+                            databaseId
+                            author { login }
+                            body
+                            path
+                            line
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            "
+            ```
+            Only process threads that are **unresolved**. Skip already-resolved threads.
+
+            If Copilot is repeating identical comment bodies from the first round
+            (convergence), note it and stop — do not re-fix the same issues.
+
+            ## Step 2 — Address each new thread
+
+            For each unresolved thread: FIX, ACKNOWLEDGE, or DECLINE.
+
+            Reply using REST (`databaseId`), then resolve via GraphQL immediately after replying.
+
+            ```bash
+            # Reply
+            gh api repos/${{ github.repository }}/pulls/${{ env.PR_NUM }}/comments/<databaseId>/replies \
+              -X POST -f body="<your reply>"
+            # Resolve
+            gh api graphql -f query="
+              mutation {
+                resolveReviewThread(input: { threadId: \"<THREAD_ID>\" }) {
+                  thread { isResolved }
+                }
+              }
+            "
+            ```
+
+            ## Step 3 — Quality checks, commit, push
+
+            Run quality gate (make check / ruff+pytest / npm test).
+            Revert any fix that breaks the gate.
+            Commit with conventional messages and push.
+
+            ## Rules
+            - Resolve every thread immediately after replying.
+            - If a fix breaks tests, revert and decline.
+            - Use conventional commits.
+
+      # ── Sub-agent 6: Post summary comment ──────────────────────────────
+      - name: "Claude: Post review summary"
+        id: claude-summary
+        if: always() && steps.claude-resolve.conclusion != 'cancelled'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          show_full_output: true
+          allowed_bots: 'claude'
+          additional_permissions: |
+            actions: read
+          claude_args: "--dangerously-skip-permissions --max-turns 15"
+          prompt: |
+            You are running the final sub-agent of the PR review pipeline on
+            PR #${{ env.PR_NUM }}. Your ONLY job is to post a summary comment.
+
+            ## Gather data
+
+            1. Fetch all review threads:
+            ```bash
+            OWNER=$(echo "${{ github.repository }}" | cut -d/ -f1)
+            REPO=$(echo "${{ github.repository }}" | cut -d/ -f2)
+            gh api graphql -f query="
+              query {
+                repository(owner: \"$OWNER\", name: \"$REPO\") {
+                  pullRequest(number: ${{ env.PR_NUM }}) {
+                    reviewThreads(first: 100) {
+                      nodes {
+                        id
+                        isResolved
+                        comments(first: 10) {
+                          nodes {
+                            author { login }
+                            body
+                            path
+                            line
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            "
+            ```
+
+            2. Fetch recent commits on this PR:
+            ```bash
+            gh pr view ${{ env.PR_NUM }} --json commits --jq '.commits[-10:] | .[] | "\(.oid[:7]) \(.messageHeadline)"'
+            ```
+
+            ## Post the summary
+
+            Analyze the threads to count Fixed/Acknowledged/Declined/Reverted by
+            looking at reply bodies that start with those keywords.
+
+            Post a single top-level comment:
 
             ```
             ## Code Review Summary
@@ -252,19 +496,65 @@ jobs:
             *Review orchestrated by Claude via agentic-ci.*
             ```
 
-            ## Agent override
+            Do NOT exit until the summary comment has been posted.
 
-            If the repo contains `.claude/agents/pr-review-orchestrator.md`, read it
-            and follow its project-specific instructions. Those instructions take
-            precedence over the generic steps above for any conflicts.
+      # ── Escalation on max-turns ────────────────────────────────────────
+      - name: Escalate on max-turns limit
+        if: |
+          always() && (
+            steps.claude-review.outputs.conclusion == 'error_max_turns' ||
+            steps.claude-resolve.outputs.conclusion == 'error_max_turns' ||
+            steps.claude-iterate.outputs.conclusion == 'error_max_turns' ||
+            steps.claude-summary.outputs.conclusion == 'error_max_turns'
+          )
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUM: ${{ inputs.pr_number || github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Post an informational comment on the PR so reviewers know the review is incomplete.
+          gh pr comment "$PR_NUM" \
+            --repo "$REPO" \
+            --body "$(cat <<'COMMENT'
+          ## :warning: Review incomplete — complexity limit reached
 
-            ## Rules
-            - Do NOT exit until Step 10 is complete.
-            - Do NOT advance past Step 2 until a Copilot review body containing
-              "Reviewed changes" is observed, or the wait window expires.
-            - Resolve every thread immediately after replying to it — never leave a
-              replied-to thread unresolved.
-            - Always reply ON the thread, never as a separate top-level comment.
-            - If a fix introduces test failures, revert it and decline with explanation.
-            - Use conventional commits for all fix commits.
-            - Respect project conventions from CLAUDE.md if present.
+          The automated review hit the maximum turn limit before finishing all steps.
+          A follow-up issue has been created so a human can complete the review or re-trigger it manually.
+
+          *This is informational only — the CI check is not failing because of this.*
+          COMMENT
+          )"
+
+          # Open a GitHub issue with enough context to continue the work.
+          gh issue create \
+            --repo "$REPO" \
+            --title "PR #${PR_NUM}: automated review hit max-turns limit — needs follow-up" \
+            --body "$(cat <<ISSUE
+          ## Background
+
+          The [PR Review workflow](${RUN_URL}) for PR #${PR_NUM} exceeded the maximum turn limit
+          (\`error_max_turns\`) and stopped before completing all review sub-agents.
+
+          ## Next steps
+
+          Choose one of the following:
+
+          1. **Re-trigger manually** — go to [Actions → Local: PR Review](${GITHUB_SERVER_URL}/${REPO}/actions/workflows/local-pr-review.yml)
+             and run it with PR number \`${PR_NUM}\`. The prompt has idempotent steps so it is safe to re-run.
+          2. **Review manually** — open PR #${PR_NUM} and address any outstanding review threads by hand.
+          3. **Raise the turn limit** — increase \`max_turns\` in the \`claude_args\` input on the calling workflow
+             if this PR is legitimately larger than normal.
+
+          ## Context
+
+          - Repository: \`${REPO}\`
+          - PR number: \`${PR_NUM}\`
+          - Failed run: ${RUN_URL}
+          - Conclusion: \`error_max_turns\`
+          ISSUE
+          )" \
+            --label "needs-attention"
+
+          echo "Escalation complete. Exiting 0 to avoid noisy CI failure."
+          exit 0

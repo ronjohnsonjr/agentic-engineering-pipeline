@@ -92,8 +92,23 @@ Relevant Files:
 - src/models.py
 - tests/test_api.py
 
+Affected Files:
+- src/api.py:10-40 -- handles request routing
+
+Interfaces:
+- def handle_request(req: Request) -> Response -- main entry point
+
+Existing Tests:
+- tests/test_api.py -- covers request routing end-to-end
+
+Patterns to Follow:
+- Use dependency injection for all service objects (src/services.py:1-20)
+
 Risks:
 - Changing models.py may break downstream serialisation
+
+Open Questions for Planner:
+- Should the new endpoint require authentication?
 """
 
 
@@ -104,6 +119,36 @@ def test_parse_research_brief_full():
     assert "src/api.py" in brief.relevant_files
     assert "tests/test_api.py" in brief.relevant_files
     assert len(brief.risks) == 1
+
+
+def test_parse_research_brief_affected_files():
+    brief = parse_research_brief(RESEARCH_BRIEF)
+    assert len(brief.affected_files) == 1
+    assert "src/api.py:10-40 -- handles request routing" in brief.affected_files
+
+
+def test_parse_research_brief_interfaces():
+    brief = parse_research_brief(RESEARCH_BRIEF)
+    assert len(brief.interfaces) == 1
+    assert "def handle_request(req: Request) -> Response -- main entry point" in brief.interfaces
+
+
+def test_parse_research_brief_existing_tests():
+    brief = parse_research_brief(RESEARCH_BRIEF)
+    assert len(brief.existing_tests) == 1
+    assert "tests/test_api.py -- covers request routing end-to-end" in brief.existing_tests
+
+
+def test_parse_research_brief_patterns():
+    brief = parse_research_brief(RESEARCH_BRIEF)
+    assert len(brief.patterns) == 1
+    assert "Use dependency injection for all service objects (src/services.py:1-20)" in brief.patterns
+
+
+def test_parse_research_brief_open_questions():
+    brief = parse_research_brief(RESEARCH_BRIEF)
+    assert len(brief.open_questions) == 1
+    assert "Should the new endpoint require authentication?" in brief.open_questions
 
 
 def test_parse_research_brief_no_conventions():
@@ -122,6 +167,35 @@ Risks:
     assert brief.conventions == []
     assert brief.relevant_files == ["src/main.py"]
     assert brief.risks == []
+    assert brief.affected_files == []
+    assert brief.interfaces == []
+    assert brief.existing_tests == []
+    assert brief.patterns == []
+    assert brief.open_questions == []
+
+
+def test_parse_research_brief_new_fields_absent():
+    text = """\
+## RESEARCH BRIEF
+
+Summary: Legacy format without new sections.
+
+Conventions:
+- snake_case
+
+Relevant Files:
+- src/legacy.py
+
+Risks:
+- May affect existing consumers
+"""
+    brief = parse_research_brief(text)
+    assert brief.summary == "Legacy format without new sections."
+    assert brief.affected_files == []
+    assert brief.interfaces == []
+    assert brief.existing_tests == []
+    assert brief.patterns == []
+    assert brief.open_questions == []
 
 
 # ---------------------------------------------------------------------------

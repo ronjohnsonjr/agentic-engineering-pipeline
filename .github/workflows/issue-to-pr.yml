@@ -24,7 +24,7 @@ on:
       claude_args:
         description: "Additional CLI args passed to claude-code-action"
         type: string
-        default: "--dangerously-skip-permissions --max-turns 20"
+        default: "--dangerously-skip-permissions --max-turns 40"
       mcp_config:
         description: "JSON MCP server config (e.g., for Linear integration)"
         type: string
@@ -51,10 +51,34 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check idempotency
+        id: idempotency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+
+          # Exit early if a PR already exists for this issue (open or merged)
+          EXISTING_PR=$(gh pr list \
+            --repo "${{ github.repository }}" \
+            --search "Closes #${ISSUE_NUMBER} in:body" \
+            --state all \
+            --json number,url,state \
+            --jq '.[0] | select(. != null) | "\(.state) \(.url)"' 2>/dev/null || true)
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "PR already exists for issue #${ISSUE_NUMBER}: ${EXISTING_PR}"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Claude Issue-to-PR Pipeline
+        if: steps.idempotency.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          show_full_output: true
           additional_permissions: |
             actions: read
           claude_args: ${{ inputs.claude_args }}
@@ -78,12 +102,13 @@ jobs:
 
             ## Phase 2: Plan
 
-            4. Create a feature branch:
+            4. Create or resume a feature branch:
                ```bash
                ISSUE_ID=${{ github.event.issue.number }}
                SLUG=$(gh issue view $ISSUE_ID --json title -q '.title' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | head -c 40)
                BRANCH="issue-${ISSUE_ID}-${SLUG}"
-               git checkout -b "$BRANCH"
+               # Use -b to create; fall back to checkout if branch already exists
+               git checkout -b "$BRANCH" || git checkout "$BRANCH"
                ```
 
             5. Analyze the codebase to understand what needs to change:
