@@ -107,12 +107,20 @@ def parse_enriched_context(text: str) -> EnrichedContext:
 
     def _sub_block(label: str) -> list[str]:
         # NOTE: searches the full `body` string. If `issue_body` text contains a
-        # line that looks like a known field label (e.g. "Parsed Requirements:"),
-        # this helper could match inside the issue body instead of the intended
-        # section. In practice the issue_body regex above terminates before bullet
-        # sections, so this is only a risk for contrived inputs.
+        # line that looks like a known field label followed by bullets (e.g.
+        # "Parsed Requirements:\n- something"), this helper could match that
+        # content in the issue body area instead of the intended section. The
+        # `issue_body` lookahead terminates before known field labels, so the
+        # parsed `issue_body` value won't include such text — but the raw `body`
+        # string searched here still contains the original issue body text.
+        # This is only a risk for contrived inputs (e.g. a bug report that says
+        # "see the Parsed Requirements section:\n- req A\n" inline). A proper
+        # fix would scan only from the position after `issue_body` ends; left as
+        # future work.
         match = re.search(
-            rf"{re.escape(label)}\s*:\s*\n((?:\s*[-*].+\n?)*)", body, re.IGNORECASE
+            rf"{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+            body,
+            re.IGNORECASE,
         )
         return _bullet_list(match.group(1)) if match else []
 
@@ -121,6 +129,15 @@ def parse_enriched_context(text: str) -> EnrichedContext:
     # The lookahead alternation is built from EnrichedContext.model_fields so that
     # any new field added to the model is automatically included here — keeping the
     # two in sync without a manual update.
+    # NOTE: field names are converted via `k.replace("_", " ").title()`, which
+    # produces title-case labels (e.g. "linear_issue_id" → "Linear Issue Id").
+    # The `re.IGNORECASE` flag compensates for any case discrepancies between
+    # the generated label and the actual text (e.g. "Linear Issue ID" is still
+    # matched). If a future field name does not map cleanly to its text label via
+    # title-case (e.g. requiring "Issue ID" not "Issue Id"), `re.IGNORECASE` will
+    # still match but a developer reading the generated regex may find it
+    # confusing. If that becomes a maintenance pain point, consider replacing this
+    # with an explicit `FIELD_LABELS: ClassVar[list[str]]` on `EnrichedContext`.
     _other_field_labels = "|".join(
         re.escape(k.replace("_", " ").title())
         for k in EnrichedContext.model_fields
@@ -235,7 +252,9 @@ def parse_research_brief(text: str) -> ResearchBrief:
 
     def _sub_block(label: str) -> list[str]:
         match = re.search(
-            rf"{re.escape(label)}\s*:\s*\n((?:\s*[-*].+\n?)*)", body, re.IGNORECASE
+            rf"{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+            body,
+            re.IGNORECASE,
         )
         return _bullet_list(match.group(1)) if match else []
 
@@ -302,7 +321,9 @@ def parse_implementation_plan(text: str) -> ImplementationPlan:
 
     def _sub_block(label: str) -> list[str]:
         match = re.search(
-            rf"{re.escape(label)}\s*:\s*\n((?:\s*[-*].+\n?)*)", body, re.IGNORECASE
+            rf"{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+            body,
+            re.IGNORECASE,
         )
         return _bullet_list(match.group(1)) if match else []
 
@@ -385,7 +406,9 @@ def parse_review_verdict(text: str) -> ReviewVerdict:
 
     def _sub_block(label: str) -> list[str]:
         match = re.search(
-            rf"{re.escape(label)}\s*:\s*\n((?:\s*[-*].+\n?)*)", body, re.IGNORECASE
+            rf"{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+            body,
+            re.IGNORECASE,
         )
         return _bullet_list(match.group(1)) if match else []
 

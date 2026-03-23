@@ -176,6 +176,44 @@ def test_parse_enriched_context_missing_section_returns_empty():
     assert ctx.issue_title == ""
 
 
+def test_parse_enriched_context_blank_line_before_bullets():
+    """_sub_block must capture bullets even when a blank line follows the label."""
+    text = """\
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-20
+
+Parsed Requirements:
+
+- First req
+- Second req
+
+Labels:
+
+- local
+"""
+    ctx = parse_enriched_context(text)
+    assert ctx.parsed_requirements == ["First req", "Second req"]
+    assert ctx.labels == ["local"]
+
+
+def test_parse_enriched_context_sub_block_does_not_match_issue_body_content():
+    """_sub_block must not match a section-like label that appears inside issue_body."""
+    text = """\
+## ENRICHED CONTEXT
+
+Issue Body: This ticket supersedes the old one.
+Pipeline Stage: Stage 1
+
+Parsed Requirements:
+- Real requirement
+"""
+    ctx = parse_enriched_context(text)
+    # The real Parsed Requirements section must be matched, not any text in issue_body
+    assert ctx.parsed_requirements == ["Real requirement"]
+    assert "Pipeline Stage" not in ctx.issue_body
+
+
 def test_parse_enriched_context_partial_fields():
     text = """\
 ## ENRICHED CONTEXT

@@ -191,7 +191,7 @@ def test_enriched_context_to_context_payload_json_is_string():
 def test_enriched_context_to_context_payload_json_is_sorted():
     ctx = EnrichedContext(linear_issue_id="AGE-94")
     json_str = ctx.to_context_payload_json()
-    # sort_keys=True means the JSON is stable across Python dict ordering
+    # to_context_payload() returns an alphabetically sorted dict, so the JSON is stable
     parsed_keys = list(json.loads(json_str).keys())
     assert parsed_keys == sorted(parsed_keys)
 
