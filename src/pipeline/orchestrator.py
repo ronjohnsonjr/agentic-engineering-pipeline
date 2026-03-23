@@ -196,6 +196,8 @@ class Orchestrator:
         )
         if self._max_verify < 1:
             raise ValueError("max_verify_attempts must be >= 1")
+        if self._max_review < 1:
+            raise ValueError("max_review_cycles must be >= 1")
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -308,6 +310,10 @@ class Orchestrator:
         issue_text: str,
         clarifier_brief: ClarifierBrief,
     ) -> ResearchBrief | None:
+        # NOTE: model_dump_json() serialises the brief as machine-formatted JSON.
+        # Downstream agents receive this JSON verbatim; any change to field names
+        # in the Pydantic model silently changes what agents see and must be
+        # treated as a breaking change to the agent interface contract.
         prompt = f"{issue_text}\n\nClarifier summary:\n{clarifier_brief.model_dump_json()}"
         state = AgentRunState(stage="researcher", status="running")
         run.record(state)
@@ -490,9 +496,12 @@ class Orchestrator:
                     all_passed = False
                     failed_details.append(f"{name}: {state.error}")
 
-        if not await validate_test_gate(results):
-            # Append unconditionally so the gate failure is always surfaced in
-            # the halt message, even when individual testers already failed.
+        # Only run the structural gate when there are results to validate.
+        # If all testers raised exceptions, results is empty and the real
+        # failures are already recorded in failed_details; calling the gate
+        # with an empty list would add a misleading "structural validation
+        # failed" entry rather than surfacing the actual exception causes.
+        if results and not await validate_test_gate(results):
             failed_details.append("test gate: structural validation failed (check parser output)")
             all_passed = False
 

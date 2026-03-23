@@ -420,6 +420,10 @@ class TestProgrammerStage:
         with pytest.raises(ValueError, match="max_verify_attempts"):
             _make_orchestrator(max_verify_attempts=0)
 
+    def test_zero_review_cycles_raises_value_error(self):
+        with pytest.raises(ValueError, match="max_review_cycles"):
+            _make_orchestrator(max_review_cycles=0)
+
     async def test_halts_on_timeout_after_max_attempts(self):
         call_count = 0
 
@@ -664,8 +668,19 @@ class TestStatePersistence:
     async def test_all_stage_states_recorded(self):
         orc = _make_orchestrator()
         result = await orc.run("issue")
-        # Result has completed stages
-        assert len(result.stages_completed) > 0
+        # Every stage that runs in the happy path must appear in stages_completed.
+        for expected in [
+            "clarifier",
+            "researcher",
+            "planner",
+            "programmer (attempt 1)",
+            "unit-tester",
+            "backend-tester",
+            "frontend-tester",
+            "pr-creator",
+            "reviewer (cycle 1)",
+        ]:
+            assert expected in result.stages_completed, f"Missing stage: {expected}"
 
     async def test_failed_state_carries_error_context(self):
         bad = AsyncMock(spec=AgentRunner)
