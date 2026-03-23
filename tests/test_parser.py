@@ -876,3 +876,21 @@ Questions:
     assert brief.verdict == "NEEDS_CLARITY"
     assert "What is the output format?" in brief.questions
     assert "Who is the consumer?" in brief.questions
+
+
+def test_parse_test_result_blank_line_before_failures():
+    """parse_test_result must handle a blank line between Failures: and the first bullet."""
+    text = (
+        "## TEST RESULT\n\nStage: unit\nPassed: false\n\n"
+        "Failures:\n\n- test_foo\n- test_bar\n"
+    )
+    result = parse_test_result(text)
+    assert result.failures == ["test_foo", "test_bar"]
+
+
+def test_sub_block_blank_line_between_bullets():
+    """_sub_block captures bullets separated by a blank line (behaviour pinned)."""
+    from src.pipeline.parser import _sub_block
+
+    body = "Section:\n- item1\n\n- item2\n"
+    assert _sub_block(body, "Section") == ["item1", "item2"]

@@ -49,8 +49,8 @@ class EnrichedContext(BaseModel):
 
         Note: keys are alphabetically sorted, intentionally differing from the
         field declaration order in the class body.  Adding a new field to
-        :class:`EnrichedContext` will shift key positions in the sorted output
-        and thereby invalidate any cache entries keyed on the JSON form.
+        :class:`EnrichedContext` will change the sort order and alter the
+        string produced by :meth:`to_context_payload_json`.
         """
         return dict(sorted(self.model_dump(mode="json").items()))
 

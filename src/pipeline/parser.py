@@ -9,6 +9,7 @@ Expected text formats are documented next to each parse function.
 from __future__ import annotations
 
 import re
+import types
 
 from src.pipeline.briefs import (
     ClarifierBrief,
@@ -33,7 +34,9 @@ from src.pipeline.briefs import (
 # labels must not appear before those longer labels. `model_fields` preserves
 # the field declaration order in EnrichedContext, and that order ensures no
 # label is a prefix of a later one. Do not sort or reorder these labels.
-_LABEL_OVERRIDES: dict[str, str] = {"linear_issue_id": "Linear Issue ID"}
+_LABEL_OVERRIDES: types.MappingProxyType[str, str] = types.MappingProxyType(
+    {"linear_issue_id": "Linear Issue ID"}
+)
 _ENRICHED_CONTEXT_FIELD_LABELS = "|".join(
     re.escape(_LABEL_OVERRIDES.get(k, k.replace("_", " ").title()))
     for k in EnrichedContext.model_fields
@@ -385,12 +388,7 @@ def parse_test_result(text: str) -> TestResult:
         if cov_match:
             coverage_pct = float(cov_match.group())
 
-    failures_match = re.search(
-        r"^Failures\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
-        body,
-        re.IGNORECASE | re.MULTILINE,
-    )
-    failures = _bullet_list(failures_match.group(1)) if failures_match else []
+    failures = _sub_block(body, "Failures")
 
     return TestResult(
         stage=stage,
@@ -472,26 +470,15 @@ def parse_pipeline_result(text: str) -> PipelineResult:
     pr_url_raw = _field_value(body, "PR")
     pr_url = pr_url_raw if pr_url_raw.startswith("http") else None
 
-    stages_match = re.search(
-        r"^Stages Completed\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
-        body,
-        re.IGNORECASE | re.MULTILINE,
-    )
-    stages_completed = _bullet_list(stages_match.group(1)) if stages_match else []
+    stages_completed = _sub_block(body, "Stages Completed")
 
     skipped: dict[str, str] = {}
-    skipped_match = re.search(
-        r"^Skipped\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
-        body,
-        re.IGNORECASE | re.MULTILINE,
-    )
-    if skipped_match:
-        for item in _bullet_list(skipped_match.group(1)):
-            if ":" in item:
-                stage, reason = item.split(":", 1)
-                skipped[stage.strip()] = reason.strip()
-            else:
-                skipped[item] = ""
+    for item in _sub_block(body, "Skipped"):
+        if ":" in item:
+            stage, reason = item.split(":", 1)
+            skipped[stage.strip()] = reason.strip()
+        else:
+            skipped[item] = ""
 
     notes = _field_value(body, "Notes")
 
