@@ -197,8 +197,8 @@ Labels:
     assert ctx.labels == ["local"]
 
 
-def test_parse_enriched_context_sub_block_does_not_match_issue_body_content():
-    """_sub_block must not match a section-like label that appears inside issue_body."""
+def test_parse_enriched_context_sub_block_does_not_match_plain_prose_body():
+    """_sub_block matches the real section when issue_body is plain prose."""
     text = """\
 ## ENRICHED CONTEXT
 
@@ -209,9 +209,31 @@ Parsed Requirements:
 - Real requirement
 """
     ctx = parse_enriched_context(text)
-    # The real Parsed Requirements section must be matched, not any text in issue_body
     assert ctx.parsed_requirements == ["Real requirement"]
     assert "Pipeline Stage" not in ctx.issue_body
+
+
+def test_parse_enriched_context_sub_block_does_not_match_label_like_issue_body():
+    """_sub_block must not match a field-like label mid-line inside issue_body text.
+
+    An issue body such as "See Parsed Requirements:\\n- old req" contains a
+    string that looks like a section label followed by a bullet. The `_sub_block`
+    helper must match only the *real* section (anchored to the start of a line),
+    not the occurrence embedded in the issue body text.
+    """
+    text = """\
+## ENRICHED CONTEXT
+
+Issue Body: See Parsed Requirements:
+- old req
+Pipeline Stage: Stage 1
+
+Parsed Requirements:
+- Real requirement
+"""
+    ctx = parse_enriched_context(text)
+    assert ctx.parsed_requirements == ["Real requirement"]
+    assert ctx.pipeline_stage == "Stage 1"
 
 
 def test_parse_enriched_context_partial_fields():

@@ -106,21 +106,15 @@ def parse_enriched_context(text: str) -> EnrichedContext:
         return EnrichedContext()
 
     def _sub_block(label: str) -> list[str]:
-        # NOTE: searches the full `body` string. If `issue_body` text contains a
-        # line that looks like a known field label followed by bullets (e.g.
-        # "Parsed Requirements:\n- something"), this helper could match that
-        # content in the issue body area instead of the intended section. The
-        # `issue_body` lookahead terminates before known field labels, so the
-        # parsed `issue_body` value won't include such text — but the raw `body`
-        # string searched here still contains the original issue body text.
-        # This is only a risk for contrived inputs (e.g. a bug report that says
-        # "see the Parsed Requirements section:\n- req A\n" inline). A proper
-        # fix would scan only from the position after `issue_body` ends; left as
-        # future work.
+        # Use `^` (with re.MULTILINE) to anchor the label to the start of a
+        # line. This prevents false matches when `issue_body` text contains a
+        # mid-line occurrence of a field-like label (e.g. a body that reads
+        # "See Parsed Requirements:\n- old req" would previously match before
+        # the real "Parsed Requirements:" section).
         match = re.search(
-            rf"{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+            rf"^{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
             body,
-            re.IGNORECASE,
+            re.IGNORECASE | re.MULTILINE,
         )
         return _bullet_list(match.group(1)) if match else []
 

@@ -50,7 +50,12 @@ class EnrichedContext(BaseModel):
         return dict(sorted(self.model_dump(mode="json").items()))
 
     def to_context_payload_json(self) -> str:
-        """Return the context payload as a compact JSON string."""
+        """Return the context payload as a compact, deterministically ordered JSON string.
+
+        Keys are alphabetically sorted (via :meth:`to_context_payload`), making
+        this string suitable for hashing, cache keys, and byte-for-byte comparison
+        across identical instances.
+        """
         return json.dumps(self.to_context_payload(), separators=(",", ":"))
 
 
