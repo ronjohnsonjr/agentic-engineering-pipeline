@@ -72,6 +72,16 @@ async def test_research_gate_fails_no_relevant_files():
 
 
 @pytest.mark.asyncio
+async def test_research_gate_passes_with_affected_files_only():
+    brief = ResearchBrief(
+        summary="Some summary",
+        relevant_files=[],
+        affected_files=["src/foo.py"],
+    )
+    assert await validate_research_gate(brief) is True
+
+
+@pytest.mark.asyncio
 async def test_research_gate_fails_whitespace_only_summary():
     brief = ResearchBrief(summary="   ", relevant_files=["src/foo.py"])
     assert await validate_research_gate(brief) is False

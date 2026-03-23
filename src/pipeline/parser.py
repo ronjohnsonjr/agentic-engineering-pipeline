@@ -125,13 +125,13 @@ def parse_research_brief(text: str) -> ResearchBrief:
         Existing Tests:
         - tests/test_foo.py -- covers request routing
 
-        Patterns:
+        Patterns to Follow:
         - Use dependency injection for all service objects (src/services.py:1-20)
 
         Risks:
         - Touching foo.py may break the bar integration.
 
-        Open Questions:
+        Open Questions for Planner:
         - Should the new endpoint require authentication?
     """
     body = _extract_section(text, "RESEARCH BRIEF")

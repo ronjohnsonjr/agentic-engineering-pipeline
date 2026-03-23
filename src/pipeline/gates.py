@@ -64,7 +64,7 @@ async def validate_research_gate(
             if not brief.summary.strip():
                 errors.append("Research summary is missing or blank")
             if not (brief.relevant_files or brief.affected_files):
-                errors.append("No relevant files were identified for research")
+                errors.append("No relevant or affected files were identified for research")
             await reporter.report_milestone("research", status, errors=errors)
     return passed
 
