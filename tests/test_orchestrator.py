@@ -287,6 +287,46 @@ class TestOrchestratorHappyPath:
         result = await orc.run("issue text")
         assert result.pr_url == "https://github.com/org/repo/pull/99"
 
+    async def test_custom_pr_url_pattern_extracts_enterprise_url(self):
+        ghe_output = "PR created: https://github.example.com/org/repo/pull/42"
+        ghe_pattern = r"https://github\.example\.com[^\s\)\]>\"']+/pull/\d+"
+        orc = Orchestrator(
+            clarifier=_stub(CLEAR_BRIEF),
+            researcher=_stub(RESEARCH_BRIEF),
+            planner=_stub(IMPLEMENTATION_PLAN),
+            programmer=_stub("QUALITY GATE: PASS"),
+            unit_tester=_stub(TEST_PASS),
+            backend_tester=_stub(TEST_PASS.replace("unit", "backend")),
+            frontend_tester=_stub(TEST_PASS.replace("unit", "e2e")),
+            pr_creator=_stub(ghe_output),
+            remediator=_stub(REMEDIATION_OUTPUT),
+            reviewer=_stub(REVIEW_APPROVED),
+            timeout_seconds=5.0,
+            pr_url_pattern=ghe_pattern,
+        )
+        result = await orc.run("issue text")
+        assert result.pr_url == "https://github.example.com/org/repo/pull/42"
+
+    async def test_custom_pr_url_pattern_halts_when_no_match(self):
+        ghe_pattern = r"https://github\.example\.com[^\s\)\]>\"']+/pull/\d+"
+        orc = Orchestrator(
+            clarifier=_stub(CLEAR_BRIEF),
+            researcher=_stub(RESEARCH_BRIEF),
+            planner=_stub(IMPLEMENTATION_PLAN),
+            programmer=_stub("QUALITY GATE: PASS"),
+            unit_tester=_stub(TEST_PASS),
+            backend_tester=_stub(TEST_PASS.replace("unit", "backend")),
+            frontend_tester=_stub(TEST_PASS.replace("unit", "e2e")),
+            pr_creator=_stub(PR_OUTPUT),  # github.com URL — does not match GHE pattern
+            remediator=_stub(REMEDIATION_OUTPUT),
+            reviewer=_stub(REVIEW_APPROVED),
+            timeout_seconds=5.0,
+            pr_url_pattern=ghe_pattern,
+        )
+        result = await orc.run("issue text")
+        assert result.status == "HALTED"
+        assert result.pr_url is None
+
 
 # ---------------------------------------------------------------------------
 # Clarifier stage
@@ -578,12 +618,11 @@ class TestTestTeam:
         assert call_counts["unit"] == 1
         assert call_counts["backend"] == 1
         assert call_counts["frontend"] == 1
-        # Parallelism check: three 0.05s sleeps should complete in well under 0.15s
-        # sequentially, but we allow 10s headroom to avoid CI flakiness on heavily
-        # loaded shared runners. The real assertion is that all three agents were
-        # invoked (checked above); this bound just guards against a regression where
+        # Parallelism check: three 0.05s sleeps run in parallel complete in ~0.05s;
+        # run sequentially they would take ~0.15s. A bound of 1.0s is generous enough
+        # for heavily loaded CI runners while still catching a regression where
         # asyncio.gather is replaced with sequential awaits.
-        assert elapsed < 10.0
+        assert elapsed < 1.0
 
 
 # ---------------------------------------------------------------------------

@@ -478,20 +478,26 @@ class Orchestrator:
 
         raw_outputs = await asyncio.gather(*coros, return_exceptions=True)
 
+        fatal: BaseException | None = None
         for (name, state), raw in zip(named_coros, raw_outputs):
             if isinstance(raw, asyncio.TimeoutError):
                 state.status = "timeout"
                 state.error = "Agent timed out"
                 all_passed = False
                 failed_details.append(f"{name}: timed out")
+            elif isinstance(raw, BaseException) and not isinstance(raw, Exception):
+                # KeyboardInterrupt / SystemExit — record and re-raise after all
+                # states are updated so no AgentRunState is left in "running".
+                state.status = "failed"
+                state.error = type(raw).__name__
+                all_passed = False
+                failed_details.append(f"{name}: {type(raw).__name__}")
+                fatal = raw
             elif isinstance(raw, Exception):
                 state.status = "failed"
                 state.error = str(raw)
                 all_passed = False
                 failed_details.append(f"{name}: {raw}")
-            elif isinstance(raw, BaseException):
-                # KeyboardInterrupt / SystemExit — re-raise; we must not mask these
-                raise raw
             else:
                 output: str = raw
                 state.output = output
@@ -505,6 +511,9 @@ class Orchestrator:
                     state.error = "; ".join(result.failures)
                     all_passed = False
                     failed_details.append(f"{name}: {state.error}")
+
+        if fatal is not None:
+            raise fatal
 
         # Only run the structural gate when there are results to validate.
         # If all testers raised exceptions, results is empty and the real
@@ -566,7 +575,12 @@ class Orchestrator:
             )
             run.record(reviewer_state)
             try:
-                output = await self._call_agent(self._reviewer, "Review the pull request.")
+                prompt = (
+                    f"Review the pull request at {run.pr_url}."
+                    if run.pr_url
+                    else "Review the pull request."
+                )
+                output = await self._call_agent(self._reviewer, prompt)
                 reviewer_state.output = output
                 verdict = parse_review_verdict(output)
             except asyncio.TimeoutError:
@@ -601,6 +615,8 @@ class Orchestrator:
             # Skip the remediator on the final cycle — there is no subsequent reviewer
             # pass to re-evaluate the fixes, so running it just wastes an agent call.
             if cycle >= self._max_review:
+                reviewer_state.status = "failed"
+                reviewer_state.error = "review cycles exhausted"
                 run.skip("remediator", "final cycle — no subsequent reviewer pass")
                 break
 
