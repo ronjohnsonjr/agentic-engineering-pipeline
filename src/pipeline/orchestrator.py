@@ -382,12 +382,13 @@ class Orchestrator:
         clarifier_brief: ClarifierBrief,
     ) -> bool:
         """Run the programmer with up to ``max_verify_attempts`` fix-verify cycles."""
-        prompt = (
+        base_prompt = (
             f"Implementation plan:\n{plan.model_dump_json()}\n\n"
             f"Issue summary:\n{clarifier_brief.model_dump_json()}"
         )
+        prompt = base_prompt
         for attempt in range(1, self._max_verify + 1):
-            state = AgentRunState(stage="programmer", status="running", attempt=attempt)
+            state = AgentRunState(stage=f"programmer (attempt {attempt})", status="running", attempt=attempt)
             run.record(state)
             try:
                 output = await self._call_agent(self._programmer, prompt)
@@ -398,7 +399,8 @@ class Orchestrator:
                     if attempt >= self._max_verify:
                         run.halt("programmer", "Programmer returned empty output after all attempts")
                         return False
-                    prompt = f"{prompt}\n\n<error>\nPrevious attempt returned empty output.\n</error>\nPlease provide implementation."
+                    # Reset to base_prompt to avoid unbounded prompt growth across retries.
+                    prompt = f"{base_prompt}\n\n<error>\nPrevious attempt returned empty output.\n</error>\nPlease provide implementation."
                     continue
                 state.status = "complete"
                 run.complete(f"programmer (attempt {attempt})")
@@ -409,8 +411,8 @@ class Orchestrator:
                 if attempt >= self._max_verify:
                     run.halt("programmer", f"Programmer timed out after {attempt} attempts")
                     return False
-                # pass the timeout error as context for the next attempt
-                prompt = f"{prompt}\n\n<error>\nPrevious attempt timed out.\n</error>\nPlease retry."
+                # Reset to base_prompt to avoid unbounded prompt growth across retries.
+                prompt = f"{base_prompt}\n\n<error>\nPrevious attempt timed out.\n</error>\nPlease retry."
             except Exception as exc:  # noqa: BLE001
                 state.status = "failed"
                 state.error = str(exc)
@@ -421,9 +423,14 @@ class Orchestrator:
                         f"Last error: {exc}",
                     )
                     return False
-                # Carry the error context forward so the next attempt can fix it.
-                # Wrap in a delimiter so the model treats it as plain error text.
-                prompt = f"{prompt}\n\n<error>\n{str(exc)[:500]}\n</error>\nPlease fix the error above and retry."
+                # Reset to base_prompt to avoid unbounded prompt growth across retries.
+                # Wrap the error in a delimiter so the model treats it as plain error text.
+                prompt = f"{base_prompt}\n\n<error>\n{str(exc)[:500]}\n</error>\nPlease fix the error above and retry."
+        # Should be unreachable — every branch in the loop returns or continues to
+        # the next iteration. This safety net prevents a silent None return if the
+        # guard on max_verify is ever relaxed.
+        run.halt("programmer", "Programmer exhausted all attempts without result.")
+        return False
 
     async def _run_test_team(self, run: PipelineRun) -> bool:
         """Run unit, backend, and frontend testers in parallel.
@@ -477,11 +484,14 @@ class Orchestrator:
                 state.error = "Agent timed out"
                 all_passed = False
                 failed_details.append(f"{name}: timed out")
-            elif isinstance(raw, BaseException):
+            elif isinstance(raw, Exception):
                 state.status = "failed"
                 state.error = str(raw)
                 all_passed = False
                 failed_details.append(f"{name}: {raw}")
+            elif isinstance(raw, BaseException):
+                # KeyboardInterrupt / SystemExit — re-raise; we must not mask these
+                raise raw
             else:
                 output: str = raw
                 state.output = output
@@ -552,7 +562,7 @@ class Orchestrator:
         """Run reviewer → remediator feedback loop up to ``max_review_cycles`` times."""
         for cycle in range(1, self._max_review + 1):
             reviewer_state = AgentRunState(
-                stage="reviewer", status="running", attempt=cycle
+                stage=f"reviewer (cycle {cycle})", status="running", attempt=cycle
             )
             run.record(reviewer_state)
             try:
