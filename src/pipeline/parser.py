@@ -54,7 +54,12 @@ def _extract_section(text: str, header: str) -> str:
 
 
 def _bullet_list(block: str) -> list[str]:
-    """Extract bullet items from a block (lines starting with ``-`` or ``*``)."""
+    """Extract bullet items from a block (lines starting with ``-`` or ``*``).
+
+    Each bullet must be a single line.  Continuation lines (indented content
+    following a bullet) are silently discarded.  Callers should ensure that
+    agent prompts instruct the model to emit one logical item per line.
+    """
     items: list[str] = []
     for line in block.splitlines():
         stripped = line.strip()
@@ -78,6 +83,12 @@ def _sub_block(body: str, label: str) -> list[str]:
     and anchors the label to the start of a line to prevent false matches
     inside multi-line field values. Blank lines between individual bullets
     are also tolerated.
+
+    Note: each bullet must be a single line.  The ``\\s*`` before ``[-*]``
+    in the capture group can consume blank lines, but ``_bullet_list`` only
+    picks lines that start with ``- `` or ``* ``; continuation lines are
+    silently dropped.  Ensure agent prompts constrain output to one item
+    per bullet line.
     """
     match = re.search(
         rf"^{re.escape(label)}\s*:\s*\n(?:[ \t]*\n)*((?:\s*[-*].+\n?)*)",

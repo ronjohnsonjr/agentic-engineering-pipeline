@@ -65,6 +65,14 @@ class EnrichedContext(BaseModel):
         escaped as ``\\uXXXX`` sequences (``ensure_ascii=True`` default).  The
         output is still byte-for-byte stable for identical inputs; callers who
         need human-readable non-ASCII text should decode via :func:`json.loads`.
+
+        .. warning::
+            **Cache-key stability:** Adding a new field to :class:`EnrichedContext`
+            changes the alphabetical sort order and produces a different string for
+            the same logical payload.  Any stored cache key, hash, or equality
+            reference derived from this output will become stale after a field is
+            added — silently, with no error.  Invalidate or version your cache
+            whenever the :class:`EnrichedContext` model grows.
         """
         return json.dumps(self.to_context_payload(), separators=(",", ":"), ensure_ascii=True)
 

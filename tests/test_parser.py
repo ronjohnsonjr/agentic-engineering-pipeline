@@ -260,6 +260,33 @@ Pipeline Stage: Stage 1
     assert ctx.pipeline_stage == "Stage 1"
 
 
+def test_parse_enriched_context_issue_body_bullet_format_field_look_alike():
+    """Known second-order limitation: bullet-format field look-alike inside issue_body.
+
+    If the issue body embeds a bullet-list block whose label matches a known
+    EnrichedContext field label, _sub_block will match that embedded text and
+    return its bullets as parsed field values — silently corrupting the output.
+
+    Pin this behaviour so any future fix (e.g. pre-stripping the issue body
+    before sub-block extraction) is visible as a deliberate change.
+    Tracked: https://github.com/ronjohnsonjr/agentic-engineering-pipeline/issues/84
+    """
+    text = """\
+## ENRICHED CONTEXT
+
+Issue Body: See prior tickets:
+Linked Documents:
+- http://prior-ticket
+Pipeline Stage: Stage 1
+"""
+    ctx = parse_enriched_context(text)
+    # issue_body stops at the embedded "Linked Documents:" label (known truncation).
+    assert ctx.issue_body == "See prior tickets:"
+    # The embedded bullet block is misinterpreted as the real Linked Documents field.
+    assert ctx.linked_documents == ["http://prior-ticket"]
+    assert ctx.pipeline_stage == "Stage 1"
+
+
 def test_parse_enriched_context_empty_issue_body():
     """issue_body returns "" when Issue Body: is present but has no value."""
     text = "## ENRICHED CONTEXT\n\nIssue Body:\nPipeline Stage: Stage 1\n"
@@ -777,8 +804,13 @@ def test_parse_pipeline_result_invalid_status():
 # ---------------------------------------------------------------------------
 # _sub_block blank-line behaviour regression tests
 # These pin the behaviour introduced when _sub_block gained optional blank-line
-# tolerance ((?:\s*\n)*) and line-start anchoring (^ + re.MULTILINE). One test
-# per affected parser ensures future refactors don't silently regress.
+# tolerance and line-start anchoring (^ + re.MULTILINE). Two distinct patterns
+# handle blank lines: `(?:[ \t]*\n)*` allows blank lines (horizontal whitespace
+# only) between the label header and the first bullet; `\s*` inside
+# `(?:\s*[-*].+\n?)*` tolerates blank lines between individual bullets (where
+# `\s` includes `\n`). These are meaningfully different from `(?:\s*\n)*` —
+# the pre-bullet gap is restricted to spaces/tabs, not all whitespace.
+# One test per affected parser ensures future refactors don't silently regress.
 # ---------------------------------------------------------------------------
 
 
