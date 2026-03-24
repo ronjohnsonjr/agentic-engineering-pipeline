@@ -527,8 +527,9 @@ class Orchestrator:
         if not await validate_test_gate(results):
             if not results:
                 failed_details.append("test gate validation failed: no results produced")
-            else:
+            elif all_passed:  # gate rejected despite all individual passes
                 failed_details.append("test gate rejected results despite individual passes")
+            # else: individual failures are already captured in failed_details
             all_passed = False
 
         if not all_passed:
@@ -545,13 +546,9 @@ class Orchestrator:
             # Extract PR URL from the output. Anchoring at owner/repo/pull/<N>
             # reconstructs the canonical URL, avoiding query params or sub-paths.
             match = re.search(
-                r"https://github\.com/([^/\s]+)/([^/\s]+)/pull/(\d+)", output
+                r"(https://[^/\s]+/[^/\s]+/[^/\s]+/pull/\d+)", output
             )
-            pr_url: str | None = (
-                f"https://github.com/{match.group(1)}/{match.group(2)}/pull/{match.group(3)}"
-                if match
-                else None
-            )
+            pr_url: str | None = match.group(1) if match else None
             if pr_url is None:
                 state.status = "failed"
                 state.error = "No pull request URL found in output"
@@ -579,6 +576,7 @@ class Orchestrator:
         Its final output is not re-reviewed; if this is undesirable, guard the
         remediator call with ``if cycle < self._max_review``.
         """
+        reviewer_state: AgentRunState | None = None
         for cycle in range(1, self._max_review + 1):
             reviewer_state = AgentRunState(
                 stage="reviewer", status="running", attempt=cycle
@@ -641,8 +639,9 @@ class Orchestrator:
                 run.halt("remediator", f"Remediator error on cycle {cycle}: {exc}")
                 return
 
-        # Exhausted all cycles without approval
-        reviewer_state.status = "failed"
+        # Exhausted all cycles without approval (reviewer_state is None when max_review_cycles=0)
+        if reviewer_state is not None:
+            reviewer_state.status = "failed"
         run.halt(
             "reviewer",
             f"Review not approved after {self._max_review} cycles.",
