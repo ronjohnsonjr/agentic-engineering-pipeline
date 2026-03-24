@@ -2,8 +2,14 @@
 
 import pytest
 
+# _ENRICHED_CONTEXT_FIELD_LABELS is imported directly (private name) so that
+# test_enriched_context_field_labels_contains_known_labels can detect accidental
+# deletion or silent renaming of the constant — a public-only test would not
+# catch that regression.  This coupling is intentional.
 from src.pipeline.parser import (
+    _ENRICHED_CONTEXT_FIELD_LABELS,
     parse_clarifier_brief,
+    parse_enriched_context,
     parse_implementation_plan,
     parse_pipeline_result,
     parse_review_verdict,
@@ -72,6 +78,357 @@ Other content.
 """
     brief = parse_clarifier_brief(text)
     assert brief.verdict == "CLEAR"
+
+
+# ---------------------------------------------------------------------------
+# parse_enriched_context
+# ---------------------------------------------------------------------------
+
+ENRICHED_CONTEXT_FULL = """\
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-94
+Issue Title: Receive enriched context payload
+Issue Body: As a pipeline agent I need structured context.
+Pipeline Stage: Clarifier (Stage 1)
+
+Parsed Requirements:
+- Context payload must include original issue content
+- Payload formatted as structured JSON
+
+Business Requirements:
+- Enable downstream agents to consume structured JSON
+
+Technical Acceptance Criteria:
+- EnrichedContext serialises to JSON via to_context_payload()
+- All AC fields present in the payload dict
+
+Dependencies:
+- AGE-87
+
+Related Issues:
+- AGE-87
+
+Linked Documents:
+- https://linear.app/example/issue/AGE-87
+
+Relevant Code Paths:
+- src/pipeline/briefs.py
+- src/pipeline/parser.py
+
+Architectural Constraints:
+- Must not modify examples/consumer-workflows/
+
+Assumptions:
+- No breaking API changes required
+
+Labels:
+- local
+- phase-1
+"""
+
+
+def test_parse_enriched_context_full():
+    ctx = parse_enriched_context(ENRICHED_CONTEXT_FULL)
+    assert ctx.linear_issue_id == "AGE-94"
+    assert ctx.issue_title == "Receive enriched context payload"
+    assert "structured context" in ctx.issue_body
+    assert ctx.pipeline_stage == "Clarifier (Stage 1)"
+    assert (
+        "Context payload must include original issue content" in ctx.parsed_requirements
+    )
+    assert len(ctx.parsed_requirements) == 2
+    assert ctx.business_requirements == [
+        "Enable downstream agents to consume structured JSON"
+    ]
+    assert len(ctx.technical_acceptance_criteria) == 2
+    assert ctx.dependencies == ["AGE-87"]
+    assert ctx.related_issues == ["AGE-87"]
+    assert len(ctx.linked_documents) == 1
+    assert "src/pipeline/briefs.py" in ctx.relevant_code_paths
+    assert "src/pipeline/parser.py" in ctx.relevant_code_paths
+    assert ctx.architectural_constraints == [
+        "Must not modify examples/consumer-workflows/"
+    ]
+    assert ctx.assumptions == ["No breaking API changes required"]
+    assert "local" in ctx.labels
+    assert "phase-1" in ctx.labels
+
+
+def test_parse_enriched_context_multiline_issue_body():
+    text = """\
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-10
+Issue Body: First line.
+  Second line (continuation).
+Pipeline Stage: Stage 1
+
+Parsed Requirements:
+- Req
+"""
+    ctx = parse_enriched_context(text)
+    assert ctx.issue_body == "First line.\n  Second line (continuation)."
+    assert "Pipeline Stage" not in ctx.issue_body  # must not bleed into next field
+    assert ctx.pipeline_stage == "Stage 1"
+
+
+def test_parse_enriched_context_missing_section_returns_empty():
+    ctx = parse_enriched_context("## CLARIFIER BRIEF\n\nVerdict: CLEAR\n")
+    assert ctx.linear_issue_id == ""
+    assert ctx.parsed_requirements == []
+    assert ctx.issue_title == ""
+
+
+def test_parse_enriched_context_blank_line_before_bullets():
+    """_sub_block must capture bullets even when a blank line follows the label."""
+    text = """\
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-20
+
+Parsed Requirements:
+
+- First req
+- Second req
+
+Labels:
+
+- local
+"""
+    ctx = parse_enriched_context(text)
+    assert ctx.parsed_requirements == ["First req", "Second req"]
+    assert ctx.labels == ["local"]
+
+
+def test_parse_enriched_context_sub_block_does_not_match_plain_prose_body():
+    """_sub_block matches the real section when issue_body is plain prose."""
+    text = """\
+## ENRICHED CONTEXT
+
+Issue Body: This ticket supersedes the old one.
+Pipeline Stage: Stage 1
+
+Parsed Requirements:
+- Real requirement
+"""
+    ctx = parse_enriched_context(text)
+    assert ctx.parsed_requirements == ["Real requirement"]
+    assert "Pipeline Stage" not in ctx.issue_body
+
+
+def test_parse_enriched_context_sub_block_does_not_match_label_like_issue_body():
+    """_sub_block must not match a field-like label mid-line inside issue_body text.
+
+    An issue body such as "See Parsed Requirements:\\n- old req" contains a
+    string that looks like a section label followed by a bullet. The `_sub_block`
+    helper must match only the *real* section (anchored to the start of a line),
+    not the occurrence embedded in the issue body text.
+    """
+    text = """\
+## ENRICHED CONTEXT
+
+Issue Body: See Parsed Requirements:
+- old req
+Pipeline Stage: Stage 1
+
+Parsed Requirements:
+- Real requirement
+"""
+    ctx = parse_enriched_context(text)
+    assert ctx.parsed_requirements == ["Real requirement"]
+    assert ctx.pipeline_stage == "Stage 1"
+
+
+def test_parse_enriched_context_issue_body_truncated_at_known_field_label():
+    """Known limitation: issue_body is truncated when a line starts with a known field label.
+
+    The lookahead stops at any line whose start matches a field label from
+    EnrichedContext.model_fields, even if that line is part of the issue body
+    text. Pin this behaviour so any future fix is visible.
+    """
+    text = """\
+## ENRICHED CONTEXT
+
+Issue Body: Background:
+Linked Documents: http://prior-ticket
+Pipeline Stage: Stage 1
+"""
+    ctx = parse_enriched_context(text)
+    # The issue body is truncated before "Linked Documents:" because that label
+    # appears at the start of a line and matches the lookahead alternation.
+    # TODO: Fix by pre-stripping the issue body section before running
+    # sub-block extraction, so embedded field-like labels can't escape.
+    # Tracked: https://github.com/ronjohnsonjr/agentic-engineering-pipeline/issues/84
+    assert ctx.issue_body == "Background:"
+    assert ctx.pipeline_stage == "Stage 1"
+
+
+def test_parse_enriched_context_issue_body_bullet_format_field_look_alike():
+    """Known second-order limitation: bullet-format field look-alike inside issue_body.
+
+    If the issue body embeds a bullet-list block whose label matches a known
+    EnrichedContext field label, _sub_block will match that embedded text and
+    return its bullets as parsed field values — silently corrupting the output.
+
+    Pin this behaviour so any future fix (e.g. pre-stripping the issue body
+    before sub-block extraction) is visible as a deliberate change.
+    Tracked: https://github.com/ronjohnsonjr/agentic-engineering-pipeline/issues/84
+    """
+    text = """\
+## ENRICHED CONTEXT
+
+Issue Body: See prior tickets:
+Linked Documents:
+- http://prior-ticket
+Pipeline Stage: Stage 1
+"""
+    ctx = parse_enriched_context(text)
+    # issue_body stops at the embedded "Linked Documents:" label (known truncation).
+    assert ctx.issue_body == "See prior tickets:"
+    # The embedded bullet block is misinterpreted as the real Linked Documents field.
+    assert ctx.linked_documents == ["http://prior-ticket"]
+    assert ctx.pipeline_stage == "Stage 1"
+
+
+def test_parse_enriched_context_empty_issue_body():
+    """issue_body returns "" when Issue Body: is present but has no value."""
+    text = "## ENRICHED CONTEXT\n\nIssue Body:\nPipeline Stage: Stage 1\n"
+    ctx = parse_enriched_context(text)
+    assert ctx.issue_body == ""
+    assert ctx.pipeline_stage == "Stage 1"
+
+
+def test_parse_enriched_context_partial_fields():
+    text = """\
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-10
+Issue Title: Simple fix
+
+Parsed Requirements:
+- Fix the bug
+"""
+    ctx = parse_enriched_context(text)
+    assert ctx.linear_issue_id == "AGE-10"
+    assert ctx.issue_title == "Simple fix"
+    assert ctx.parsed_requirements == ["Fix the bug"]
+    assert ctx.dependencies == []
+    assert ctx.related_issues == []
+
+
+def test_parse_clarifier_brief_with_enriched_context():
+    text = """\
+## CLARIFIER BRIEF
+
+Verdict: CLEAR
+
+Questions:
+- (none)
+
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-94
+Issue Title: Receive enriched context payload
+
+Parsed Requirements:
+- Context payload must include original issue content
+
+Dependencies:
+- AGE-87
+
+Relevant Code Paths:
+- src/pipeline/briefs.py
+"""
+    brief = parse_clarifier_brief(text)
+    assert brief.verdict == "CLEAR"
+    assert brief.questions == []
+    assert brief.enriched_context.linear_issue_id == "AGE-94"
+    assert brief.enriched_context.issue_title == "Receive enriched context payload"
+    assert brief.enriched_context.parsed_requirements == [
+        "Context payload must include original issue content"
+    ]
+    assert brief.enriched_context.dependencies == ["AGE-87"]
+    assert "src/pipeline/briefs.py" in brief.enriched_context.relevant_code_paths
+
+
+def test_parse_clarifier_brief_needs_clarity_with_enriched_context():
+    text = """\
+## CLARIFIER BRIEF
+
+Verdict: NEEDS_CLARITY
+
+Questions:
+- What is the expected output format?
+
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-55
+Issue Title: Ambiguous feature
+
+Parsed Requirements:
+- Some requirement
+"""
+    brief = parse_clarifier_brief(text)
+    assert brief.verdict == "NEEDS_CLARITY"
+    assert "What is the expected output format?" in brief.questions
+    assert brief.enriched_context.linear_issue_id == "AGE-55"
+
+
+def test_parse_clarifier_brief_enriched_context_payload_is_dict():
+    text = """\
+## CLARIFIER BRIEF
+
+Verdict: CLEAR
+
+Questions:
+- (none)
+
+## ENRICHED CONTEXT
+
+Linear Issue ID: AGE-94
+Issue Title: Test
+
+Parsed Requirements:
+- Req 1
+"""
+    brief = parse_clarifier_brief(text)
+    payload = brief.enriched_context.to_context_payload()
+    assert isinstance(payload, dict)
+    assert payload["linear_issue_id"] == "AGE-94"
+    assert payload["parsed_requirements"] == ["Req 1"]
+
+
+def test_parse_clarifier_brief_no_enriched_context_returns_default():
+    """parse_clarifier_brief propagates a default EnrichedContext when no ENRICHED CONTEXT block is present."""
+    text = """\
+## CLARIFIER BRIEF
+
+Verdict: CLEAR
+
+Questions:
+- (none)
+"""
+    brief = parse_clarifier_brief(text)
+    assert brief.verdict == "CLEAR"
+    assert brief.enriched_context.linear_issue_id == ""
+    assert brief.enriched_context.parsed_requirements == []
+    assert brief.enriched_context.issue_title == ""
+
+
+def test_enriched_context_field_labels_contains_known_labels():
+    """_ENRICHED_CONTEXT_FIELD_LABELS must include known canonical label strings.
+
+    The constant stores re.escape()-d labels joined with ``|``, so we compare
+    against the escaped form of each expected label.
+    """
+    import re as _re
+
+    for expected in ("Parsed Requirements", "Linear Issue ID", "Technical Acceptance Criteria"):
+        escaped = _re.escape(expected)
+        assert escaped in _ENRICHED_CONTEXT_FIELD_LABELS, (
+            f"Expected escaped label {escaped!r} to appear in _ENRICHED_CONTEXT_FIELD_LABELS"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -446,3 +803,136 @@ def test_parse_pipeline_result_invalid_status():
     text = "## PIPELINE RESULT\n\nStatus: RUNNING\nIssue: #1\n"
     with pytest.raises(ValueError, match="Unrecognised pipeline status"):
         parse_pipeline_result(text)
+
+
+# ---------------------------------------------------------------------------
+# _sub_block blank-line behaviour regression tests
+# These pin the behaviour introduced when _sub_block gained optional blank-line
+# tolerance and line-start anchoring (^ + re.MULTILINE). Two distinct patterns
+# handle blank lines: `(?:[ \t]*\n)*` allows blank lines (horizontal whitespace
+# only) between the label header and the first bullet; `\s*` inside
+# `(?:\s*[-*].+\n?)*` tolerates blank lines between individual bullets (where
+# `\s` includes `\n`). These are meaningfully different from `(?:\s*\n)*` —
+# the pre-bullet gap is restricted to spaces/tabs, not all whitespace.
+# One test per affected parser ensures future refactors don't silently regress.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_research_brief_blank_line_before_bullets():
+    """_sub_block must capture bullets when a blank line follows the label header."""
+    text = """\
+## RESEARCH BRIEF
+
+Summary: Compact codebase.
+
+Conventions:
+
+- snake_case identifiers
+- One class per module
+
+Relevant Files:
+- src/main.py
+"""
+    brief = parse_research_brief(text)
+    assert brief.conventions == ["snake_case identifiers", "One class per module"]
+    assert brief.relevant_files == ["src/main.py"]
+
+
+def test_parse_research_brief_label_mid_sentence_not_matched():
+    """_sub_block must not match a label string that appears mid-sentence in summary."""
+    text = """\
+## RESEARCH BRIEF
+
+Summary: See Conventions: they are important.
+
+Conventions:
+- Real convention
+"""
+    brief = parse_research_brief(text)
+    assert brief.conventions == ["Real convention"]
+
+
+def test_parse_implementation_plan_blank_line_before_out_of_scope():
+    """_sub_block must capture Out of Scope bullets with a blank line after the label."""
+    text = """\
+## IMPLEMENTATION PLAN
+
+Issue: #99
+
+Steps:
+1. Do the thing
+
+Out of Scope:
+
+- No migrations
+- No frontend work
+
+Risks:
+- Minor breakage possible
+"""
+    plan = parse_implementation_plan(text)
+    assert plan.out_of_scope == ["No migrations", "No frontend work"]
+    assert len(plan.risks) == 1
+
+
+def test_parse_review_verdict_blank_line_before_blocking():
+    """_sub_block must capture Blocking items with a blank line after the label."""
+    text = """\
+## REVIEW VERDICT
+
+Verdict: CHANGES_REQUIRED
+Cycle: 1
+
+Blocking:
+
+- Missing null check
+- Unhandled edge case
+
+Suggestions:
+- Add docstring
+"""
+    verdict = parse_review_verdict(text)
+    assert verdict.blocking == ["Missing null check", "Unhandled edge case"]
+    assert verdict.suggestions == ["Add docstring"]
+
+
+def test_parse_clarifier_brief_blank_line_before_questions():
+    """parse_clarifier_brief fallback must handle a blank line between Questions: and bullets."""
+    text = """\
+## CLARIFIER BRIEF
+
+Verdict: NEEDS_CLARITY
+
+Questions:
+
+- What is the output format?
+- Who is the consumer?
+"""
+    brief = parse_clarifier_brief(text)
+    assert brief.verdict == "NEEDS_CLARITY"
+    assert "What is the output format?" in brief.questions
+    assert "Who is the consumer?" in brief.questions
+
+
+def test_parse_test_result_blank_line_before_failures():
+    """parse_test_result must handle a blank line between Failures: and the first bullet."""
+    text = (
+        "## TEST RESULT\n\nStage: unit\nPassed: false\n\n"
+        "Failures:\n\n- test_foo\n- test_bar\n"
+    )
+    result = parse_test_result(text)
+    assert result.failures == ["test_foo", "test_bar"]
+
+
+def test_sub_block_blank_line_between_bullets():
+    """_sub_block captures bullets separated by a blank line (behaviour pinned).
+
+    _sub_block is imported directly here because the blank-line-between-bullets
+    scenario is not yet covered by any higher-level parser test.  The coupling
+    to the private name is intentional: it provides precise failure attribution
+    if the regex changes.
+    """
+    from src.pipeline.parser import _sub_block
+
+    body = "Section:\n- item1\n\n- item2\n"
+    assert _sub_block(body, "Section") == ["item1", "item2"]
