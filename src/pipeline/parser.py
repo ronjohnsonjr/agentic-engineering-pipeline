@@ -53,6 +53,7 @@ for _i, _a in enumerate(_labels_raw):
                 "reorder EnrichedContext fields so longer labels come first"
             )
 _ENRICHED_CONTEXT_FIELD_LABELS = "|".join(_labels_raw)
+del _labels_raw, _i, _a, _b
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +114,7 @@ def _sub_block(body: str, label: str) -> list[str]:
     edge case does not arise in practice.
     """
     match = re.search(
-        rf"^{re.escape(label)}\s*:\s*\n(?:[ \t]*\n)*((?:\s*[-*] .+\n?)*)",
+        rf"^{re.escape(label)}\s*:\s*\n(?:[ \t]*\r?\n)*((?:\s*[-*] .+\n?)*)",
         body,
         re.IGNORECASE | re.MULTILINE,
     )
