@@ -101,7 +101,7 @@ def parse_clarifier_brief(text: str) -> ClarifierBrief:
     confidence_score: float = 1.0
     if confidence_raw:
         try:
-            confidence_score = float(confidence_raw)
+            confidence_score = max(0.0, min(1.0, float(confidence_raw)))
         except ValueError:
             pass
 

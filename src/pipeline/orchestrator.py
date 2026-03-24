@@ -380,6 +380,9 @@ class Orchestrator:
         clarifier_brief: ClarifierBrief,
     ) -> bool:
         """Run the programmer with up to ``max_verify_attempts`` fix-verify cycles."""
+        if self._max_verify < 1:
+            run.halt("programmer", "max_verify_attempts=0: programmer was never invoked")
+            return False
         prompt = (
             f"Implementation plan:\n{plan.model_dump_json()}\n\n"
             f"Issue summary:\n{clarifier_brief.model_dump_json()}"
@@ -619,7 +622,11 @@ class Orchestrator:
                 stage="remediator", status="running", attempt=cycle
             )
             run.record(rem_state)
-            blocking = "; ".join(verdict.blocking)
+            # Escape angle brackets so a misbehaving reviewer cannot inject text
+            # outside the <blocking-issues> delimiter.
+            blocking = "; ".join(
+                item.replace("<", "&lt;").replace(">", "&gt;") for item in verdict.blocking
+            )
             try:
                 rem_output = await self._call_agent(
                     self._remediator,
