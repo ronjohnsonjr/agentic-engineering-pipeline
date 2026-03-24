@@ -176,6 +176,8 @@ def test_enriched_context_full_payload_fields():
     assert payload["relevant_code_paths"] == ["src/pipeline/briefs.py"]
     assert payload["issue_body"] == "As a pipeline agent I need structured context..."
     assert payload["issue_title"] == "Receive enriched context payload"
+    keys = list(payload.keys())
+    assert keys == sorted(keys), f"payload keys are not sorted: {keys}"
 
 
 def test_enriched_context_to_context_payload_returns_dict():

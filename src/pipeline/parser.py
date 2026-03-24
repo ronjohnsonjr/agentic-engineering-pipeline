@@ -9,7 +9,6 @@ Expected text formats are documented next to each parse function.
 from __future__ import annotations
 
 import re
-import types
 
 from src.pipeline.briefs import (
     ClarifierBrief,
@@ -29,14 +28,12 @@ from src.pipeline.briefs import (
 # (e.g. "Linear Issue Id" instead of "Linear Issue ID"). See
 # parse_enriched_context for usage.
 #
-# IMPORTANT — alternation order is load-bearing: the regex engine picks the
-# *first* alternative that matches, so labels that are prefixes of longer
-# labels must not appear before those longer labels. `model_fields` preserves
-# the field declaration order in EnrichedContext, and that order ensures no
-# label is a prefix of a later one. Do not sort or reorder these labels.
-_LABEL_OVERRIDES: types.MappingProxyType[str, str] = types.MappingProxyType(
-    {"linear_issue_id": "Linear Issue ID"}
-)
+# IMPORTANT: if you ever add a field whose title-case label is a prefix
+# of an existing label (e.g. "Related" would prefix "Related Issues"),
+# place the longer label first in the alternation, or append it before
+# the shorter one. Currently no label is a prefix of another, so order
+# is not load-bearing.
+_LABEL_OVERRIDES: dict[str, str] = {"linear_issue_id": "Linear Issue ID"}
 _ENRICHED_CONTEXT_FIELD_LABELS = "|".join(
     re.escape(_LABEL_OVERRIDES.get(k, k.replace("_", " ").title()))
     for k in EnrichedContext.model_fields
@@ -79,10 +76,11 @@ def _sub_block(body: str, label: str) -> list[str]:
 
     Handles an optional blank line between the label and the first bullet,
     and anchors the label to the start of a line to prevent false matches
-    inside multi-line field values.
+    inside multi-line field values. Blank lines between individual bullets
+    are also tolerated.
     """
     match = re.search(
-        rf"^{re.escape(label)}\s*:\s*\n(?:\s*\n)*((?:\s*[-*].+\n?)*)",
+        rf"^{re.escape(label)}\s*:\s*\n(?:[ \t]*\n)*((?:\s*[-*].+\n?)*)",
         body,
         re.IGNORECASE | re.MULTILINE,
     )
