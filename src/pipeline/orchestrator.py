@@ -346,7 +346,7 @@ class Orchestrator:
     ) -> ImplementationPlan | None:
         prompt = (
             f"Research brief:\n{research_brief.model_dump_json()}\n\n"
-            f"Acceptance criteria:\n{clarifier_brief.model_dump_json()}"
+            f"Clarifier brief:\n{clarifier_brief.model_dump_json()}"
         )
         state = AgentRunState(stage="planner", status="running")
         run.record(state)
@@ -525,11 +525,10 @@ class Orchestrator:
                 await asyncio.gather(*pending, return_exceptions=True)
 
         if not await validate_test_gate(results):
-            # Only append the gate-failure note when no per-task results were produced
-            # (i.e. every tester timed out or raised before returning output).  When
-            # results exist but some failed, the per-task details already cover it.
             if not results:
                 failed_details.append("test gate validation failed: no results produced")
+            else:
+                failed_details.append("test gate rejected results despite individual passes")
             all_passed = False
 
         if not all_passed:
@@ -626,7 +625,7 @@ class Orchestrator:
             try:
                 rem_output = await self._call_agent(
                     self._remediator,
-                    f"Blocking issues from reviewer (cycle {cycle}):\n{blocking}",
+                    f"Blocking issues from reviewer (cycle {cycle}):\n<blocking-issues>\n{blocking}\n</blocking-issues>\nApply fixes for each issue above.",
                 )
                 rem_state.output = rem_output
                 rem_state.status = "complete"
@@ -643,6 +642,7 @@ class Orchestrator:
                 return
 
         # Exhausted all cycles without approval
+        reviewer_state.status = "failed"
         run.halt(
             "reviewer",
             f"Review not approved after {self._max_review} cycles.",

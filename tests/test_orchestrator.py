@@ -604,6 +604,12 @@ class TestPRCreatorStage:
         assert result.status == "HALTED"
         assert "push failed" in result.notes
 
+    async def test_halts_when_pr_creator_returns_no_url(self):
+        orc = _make_orchestrator(pr_creator=_stub("PR creation is pending."))
+        result = await orc.run("issue")
+        assert result.status == "HALTED"
+        assert "pull request url" in result.notes.lower()
+
 
 # ---------------------------------------------------------------------------
 # Review cycle — feedback loop (reviewer → remediator → reviewer)
