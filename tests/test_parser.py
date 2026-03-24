@@ -2,6 +2,10 @@
 
 import pytest
 
+# _ENRICHED_CONTEXT_FIELD_LABELS is imported directly (private name) so that
+# test_enriched_context_field_labels_contains_known_labels can detect accidental
+# deletion or silent renaming of the constant — a public-only test would not
+# catch that regression.  This coupling is intentional.
 from src.pipeline.parser import (
     _ENRICHED_CONTEXT_FIELD_LABELS,
     parse_clarifier_brief,
@@ -921,7 +925,13 @@ def test_parse_test_result_blank_line_before_failures():
 
 
 def test_sub_block_blank_line_between_bullets():
-    """_sub_block captures bullets separated by a blank line (behaviour pinned)."""
+    """_sub_block captures bullets separated by a blank line (behaviour pinned).
+
+    _sub_block is imported directly here because the blank-line-between-bullets
+    scenario is not yet covered by any higher-level parser test.  The coupling
+    to the private name is intentional: it provides precise failure attribution
+    if the regex changes.
+    """
     from src.pipeline.parser import _sub_block
 
     body = "Section:\n- item1\n\n- item2\n"

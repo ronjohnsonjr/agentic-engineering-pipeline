@@ -40,6 +40,23 @@ _ENRICHED_CONTEXT_FIELD_LABELS = "|".join(
     if k != "issue_body"
 )
 
+# Guard: ensure no escaped label is a regex-prefix of a later label in the
+# alternation.  A prefix match would cause the shorter label to shadow the
+# longer one, silently dropping any section whose header starts with the same
+# words.  This converts that silent correctness regression into an immediate
+# AssertionError on import.
+_labels_raw = [
+    re.escape(_LABEL_OVERRIDES.get(k, k.replace("_", " ").title()))
+    for k in EnrichedContext.model_fields
+    if k != "issue_body"
+]
+for _i, _a in enumerate(_labels_raw):
+    for _b in _labels_raw[_i + 1 :]:
+        assert not _b.startswith(_a), (
+            f"{_a!r} is a regex-prefix of {_b!r} — "
+            "reorder EnrichedContext fields so longer labels come first"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -89,6 +106,14 @@ def _sub_block(body: str, label: str) -> list[str]:
     picks lines that start with ``- `` or ``* ``; continuation lines are
     silently dropped.  Ensure agent prompts constrain output to one item
     per bullet line.
+
+    Termination invariant: the capture group stops when it encounters a
+    non-whitespace character that is not ``- `` or ``* ``.  If two labelled
+    sections are separated by only a blank line and the second section's
+    first content line is a bare bullet (no intervening label line), those
+    bullets will be silently consumed by the first section.  Well-formed
+    agent output always begins each section with a labelled header, so this
+    edge case does not arise in practice.
     """
     match = re.search(
         rf"^{re.escape(label)}\s*:\s*\n(?:[ \t]*\n)*((?:\s*[-*].+\n?)*)",
@@ -279,13 +304,13 @@ def parse_research_brief(text: str) -> ResearchBrief:
         Existing Tests:
         - tests/test_foo.py -- covers request routing
 
-        Patterns:
+        Patterns to Follow:
         - Use dependency injection for all service objects (src/services.py:1-20)
 
         Risks:
         - Touching foo.py may break the bar integration.
 
-        Open Questions:
+        Open Questions for Planner:
         - Should the new endpoint require authentication?
     """
     body = _extract_section(text, "RESEARCH BRIEF")
