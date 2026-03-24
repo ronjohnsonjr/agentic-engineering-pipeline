@@ -312,7 +312,10 @@ class Orchestrator:
         issue_text: str,
         clarifier_brief: ClarifierBrief,
     ) -> ResearchBrief | None:
-        prompt = f"{issue_text}\n\nClarifier summary:\n{clarifier_brief.model_dump_json()}"
+        prompt = (
+            f"<issue>\n{issue_text}\n</issue>\n\n"
+            f"Clarifier summary:\n{clarifier_brief.model_dump_json()}"
+        )
         state = AgentRunState(stage="researcher", status="running")
         run.record(state)
         try:
@@ -381,6 +384,7 @@ class Orchestrator:
     ) -> bool:
         """Run the programmer with up to ``max_verify_attempts`` fix-verify cycles."""
         if self._max_verify < 1:
+            run.skip("programmer", "max_verify_attempts=0: programmer was never invoked")
             run.halt("programmer", "max_verify_attempts=0: programmer was never invoked")
             return False
         prompt = (
@@ -546,8 +550,10 @@ class Orchestrator:
         try:
             output = await self._call_agent(self._pr_creator, "Create the pull request.")
             state.output = output
-            # Extract PR URL from the output. Anchoring at owner/repo/pull/<N>
-            # reconstructs the canonical URL, avoiding query params or sub-paths.
+            # Extract PR URL from the output. The pattern is intentionally
+            # host-agnostic to support GitHub.com and GitHub Enterprise Server
+            # (GHES) instances. It matches any https URL whose path ends with
+            # /pull/<N>, avoiding query params or sub-paths.
             match = re.search(
                 r"(https://[^/\s]+/[^/\s]+/[^/\s]+/pull/\d+)", output
             )
@@ -579,6 +585,10 @@ class Orchestrator:
         Its final output is not re-reviewed; if this is undesirable, guard the
         remediator call with ``if cycle < self._max_review``.
         """
+        if self._max_review < 1:
+            run.skip("reviewer", "max_review_cycles=0: review skipped by configuration")
+            return
+
         reviewer_state: AgentRunState | None = None
         for cycle in range(1, self._max_review + 1):
             reviewer_state = AgentRunState(

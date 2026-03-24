@@ -466,6 +466,15 @@ class TestProgrammerStage:
         assert result.status == "HALTED"
         assert always_empty.run.await_count == 2
 
+    async def test_halts_immediately_when_max_verify_attempts_is_zero(self):
+        programmer = _stub("QUALITY GATE: PASS")
+        orc = _make_orchestrator(programmer=programmer, max_verify_attempts=0)
+        result = await orc.run("issue")
+        assert result.status == "HALTED"
+        assert "max_verify_attempts=0" in result.notes
+        programmer.run.assert_not_awaited()
+        assert "programmer" in result.skipped
+
 
 # ---------------------------------------------------------------------------
 # Test team — parallel execution and skip rules
@@ -675,6 +684,16 @@ class TestReviewCycle:
         )
         result = await orc.run("issue")
         assert result.status == "HALTED"
+
+    async def test_review_cycle_skipped_when_max_is_zero(self):
+        reviewer = _stub(REVIEW_APPROVED)
+        orc = _make_orchestrator(reviewer=reviewer, max_review_cycles=0)
+        result = await orc.run("issue")
+        # With 0 review cycles, review is skipped; pipeline should complete
+        # (PR was created successfully; review gate is bypassed).
+        assert result.status == "COMPLETE"
+        reviewer.run.assert_not_awaited()
+        assert "reviewer" in result.skipped
 
 
 # ---------------------------------------------------------------------------

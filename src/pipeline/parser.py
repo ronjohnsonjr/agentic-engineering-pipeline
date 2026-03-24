@@ -8,7 +8,10 @@ Expected text formats are documented next to each parse function.
 
 from __future__ import annotations
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 from src.pipeline.briefs import (
     ClarifierBrief,
@@ -103,7 +106,14 @@ def parse_clarifier_brief(text: str) -> ClarifierBrief:
         try:
             confidence_score = max(0.0, min(1.0, float(confidence_raw)))
         except ValueError:
-            pass
+            stripped = confidence_raw.strip()
+            if stripped.endswith("%"):
+                try:
+                    confidence_score = max(0.0, min(1.0, float(stripped[:-1]) / 100))
+                except ValueError:
+                    logger.warning("Unparseable confidence value %r; defaulting to 1.0", confidence_raw)
+            else:
+                logger.warning("Unparseable confidence value %r; defaulting to 1.0", confidence_raw)
 
     return ClarifierBrief(verdict=raw_verdict, questions=questions, confidence_score=confidence_score)  # type: ignore[arg-type]
 
