@@ -53,7 +53,11 @@ for _i, _a in enumerate(_labels_raw):
                 "reorder EnrichedContext fields so longer labels come first"
             )
 _ENRICHED_CONTEXT_FIELD_LABELS = "|".join(_labels_raw)
-del _labels_raw, _i, _a, _b
+del _labels_raw
+try:
+    del _i, _a, _b
+except NameError:
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -184,11 +188,11 @@ def parse_enriched_context(text: str) -> EnrichedContext:
     # up to the next field or bullet section.
     # _ENRICHED_CONTEXT_FIELD_LABELS is a module-level constant built from
     # EnrichedContext.model_fields, so any new field is automatically included.
-    # NOTE: `issue_title` is included in _ENRICHED_CONTEXT_FIELD_LABELS but
-    # is an ineffective terminator in practice — in the canonical section format
-    # `Issue Title:` always appears *before* `Issue Body:`, so it can never
-    # terminate issue_body capture in valid input. It only fires if an agent
-    # writes an out-of-order section, which is already an error condition.
+    # NOTE: `issue_title` is included in _ENRICHED_CONTEXT_FIELD_LABELS and
+    # correctly guards against out-of-order agent output — if `Issue Title:`
+    # appears *after* `Issue Body:`, the lookahead terminates capture at that
+    # point. In the canonical section format `Issue Title:` always appears
+    # *before* `Issue Body:`, so the lookahead does not fire in valid input.
     # NOTE: known limitation — the lookahead stops at any line that *starts with*
     # a known field label, even if that line is part of the issue body text
     # (e.g. an issue body that begins a line with "Linked Documents: …"). In

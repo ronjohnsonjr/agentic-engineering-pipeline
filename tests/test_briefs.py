@@ -217,6 +217,14 @@ def test_enriched_context_to_context_payload_json_is_sorted():
     assert parsed_keys == sorted(parsed_keys)
 
 
+def test_enriched_context_to_context_payload_json_uses_compact_separators():
+    """to_context_payload_json must use compact separators (no spaces after : or ,)."""
+    ctx = EnrichedContext(linear_issue_id="AGE-94", issue_title="Test")
+    json_str = ctx.to_context_payload_json()
+    assert ": " not in json_str, "Found space after colon — separators must be compact"
+    assert ", " not in json_str, "Found space after comma — separators must be compact"
+
+
 def test_enriched_context_to_context_payload_json_escapes_non_ascii():
     """Non-ASCII characters must be escaped as \\uXXXX (ensure_ascii=True default)."""
     ctx = EnrichedContext(issue_title="Ré")
