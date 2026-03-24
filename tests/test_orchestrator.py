@@ -330,6 +330,22 @@ class TestClarifierStage:
         await orc.run("issue")
         researcher.run.assert_not_awaited()
 
+    async def test_halts_on_low_confidence_clear_brief(self):
+        low_conf_brief = """
+## CLARIFIER BRIEF
+
+Verdict: CLEAR
+
+Confidence: 0.3
+
+Questions:
+- (none)
+"""
+        orc = _make_orchestrator(clarifier=_stub(low_conf_brief))
+        result = await orc.run("issue")
+        assert result.status == "HALTED"
+        assert "LOW_CONFIDENCE" in result.notes or "confidence" in result.notes.lower()
+
 
 # ---------------------------------------------------------------------------
 # Researcher stage

@@ -439,7 +439,11 @@ class Orchestrator:
                 # are preserved rather than truncated from the front.
                 _exc_str = str(exc)
                 _exc_excerpt = _exc_str[-2000:] if len(_exc_str) > 2000 else _exc_str
+                # Escape angle brackets so a crafted exception message cannot
+                # inject text outside the <error> delimiter.
+                _exc_excerpt = _exc_excerpt.replace("<", "&lt;").replace(">", "&gt;")
                 prompt = f"{prompt}\n\n<error>\n{_exc_excerpt}\n</error>\nPlease fix the error above and retry."
+        return False
 
     async def _run_test_team(self, run: PipelineRun) -> bool:
         """Run unit, backend, and frontend testers in parallel.
@@ -570,7 +574,12 @@ class Orchestrator:
             return False
 
     async def _run_review_cycle(self, run: PipelineRun) -> None:
-        """Run reviewer → remediator feedback loop up to ``max_review_cycles`` times."""
+        """Run reviewer → remediator feedback loop up to ``max_review_cycles`` times.
+
+        Note: the remediator is called on every cycle including the last one.
+        Its final output is not re-reviewed; if this is undesirable, guard the
+        remediator call with ``if cycle < self._max_review``.
+        """
         for cycle in range(1, self._max_review + 1):
             reviewer_state = AgentRunState(
                 stage="reviewer", status="running", attempt=cycle
