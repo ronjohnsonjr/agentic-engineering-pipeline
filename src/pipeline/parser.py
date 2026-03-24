@@ -34,17 +34,12 @@ from src.pipeline.briefs import (
 # the shorter one. Currently no label is a prefix of another, so order
 # is not load-bearing.
 _LABEL_OVERRIDES: dict[str, str] = {"linear_issue_id": "Linear Issue ID"}
-_ENRICHED_CONTEXT_FIELD_LABELS = "|".join(
-    re.escape(_LABEL_OVERRIDES.get(k, k.replace("_", " ").title()))
-    for k in EnrichedContext.model_fields
-    if k != "issue_body"
-)
 
 # Guard: ensure no escaped label is a regex-prefix of a later label in the
 # alternation.  A prefix match would cause the shorter label to shadow the
 # longer one, silently dropping any section whose header starts with the same
 # words.  This converts that silent correctness regression into an immediate
-# AssertionError on import.
+# RuntimeError on import.
 _labels_raw = [
     re.escape(_LABEL_OVERRIDES.get(k, k.replace("_", " ").title()))
     for k in EnrichedContext.model_fields
@@ -52,10 +47,12 @@ _labels_raw = [
 ]
 for _i, _a in enumerate(_labels_raw):
     for _b in _labels_raw[_i + 1 :]:
-        assert not _b.startswith(_a), (
-            f"{_a!r} is a regex-prefix of {_b!r} — "
-            "reorder EnrichedContext fields so longer labels come first"
-        )
+        if _b.startswith(_a):
+            raise RuntimeError(
+                f"{_a!r} is a regex-prefix of {_b!r} — "
+                "reorder EnrichedContext fields so longer labels come first"
+            )
+_ENRICHED_CONTEXT_FIELD_LABELS = "|".join(_labels_raw)
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +113,7 @@ def _sub_block(body: str, label: str) -> list[str]:
     edge case does not arise in practice.
     """
     match = re.search(
-        rf"^{re.escape(label)}\s*:\s*\n(?:[ \t]*\n)*((?:\s*[-*].+\n?)*)",
+        rf"^{re.escape(label)}\s*:\s*\n(?:[ \t]*\n)*((?:\s*[-*] .+\n?)*)",
         body,
         re.IGNORECASE | re.MULTILINE,
     )
