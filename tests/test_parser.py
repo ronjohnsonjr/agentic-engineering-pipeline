@@ -74,6 +74,33 @@ Other content.
     assert brief.verdict == "CLEAR"
 
 
+def test_parse_clarifier_confidence_decimal():
+    text = "## CLARIFIER BRIEF\n\nVerdict: CLEAR\nConfidence: 0.75\n"
+    brief = parse_clarifier_brief(text)
+    assert brief.confidence_score == pytest.approx(0.75)
+
+
+def test_parse_clarifier_confidence_percentage():
+    text = "## CLARIFIER BRIEF\n\nVerdict: CLEAR\nConfidence: 75%\n"
+    brief = parse_clarifier_brief(text)
+    assert brief.confidence_score == pytest.approx(0.75)
+
+
+def test_parse_clarifier_confidence_unparseable_defaults_to_one(caplog):
+    import logging
+    text = "## CLARIFIER BRIEF\n\nVerdict: CLEAR\nConfidence: high\n"
+    with caplog.at_level(logging.WARNING, logger="src.pipeline.parser"):
+        brief = parse_clarifier_brief(text)
+    assert brief.confidence_score == pytest.approx(1.0)
+    assert "Unparseable confidence value" in caplog.text
+
+
+def test_parse_clarifier_confidence_clamped_above_one():
+    text = "## CLARIFIER BRIEF\n\nVerdict: CLEAR\nConfidence: 1.5\n"
+    brief = parse_clarifier_brief(text)
+    assert brief.confidence_score == pytest.approx(1.0)
+
+
 # ---------------------------------------------------------------------------
 # parse_research_brief
 # ---------------------------------------------------------------------------

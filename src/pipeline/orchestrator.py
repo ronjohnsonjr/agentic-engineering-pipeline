@@ -47,6 +47,10 @@ DEFAULT_TIMEOUT_SECONDS: float = 300.0  # 5 min per agent call
 DEFAULT_MAX_VERIFY_ATTEMPTS: int = 3    # programmer fix-verify cycles
 DEFAULT_MAX_REVIEW_CYCLES: int = 3      # reviewer-remediator cycles
 
+# Marker string the programmer agent must emit to signal a passing quality gate.
+# Used both in the detection regex and in the retry prompt so they stay in sync.
+_QUALITY_GATE_MARKER = "QUALITY GATE: PASS"
+
 
 # ---------------------------------------------------------------------------
 # Agent interface
@@ -385,6 +389,9 @@ class Orchestrator:
         """Run the programmer with up to ``max_verify_attempts`` fix-verify cycles."""
         if self._max_verify < 1:
             run.skip("programmer", "max_verify_attempts=0: programmer was never invoked")
+            # Halt intentionally: the pipeline cannot continue without implementation.
+            # skip() records the stage so the audit trail is complete; halt() propagates
+            # the HALTED status to the caller.
             run.halt("programmer", "max_verify_attempts=0: programmer was never invoked")
             return False
         prompt = (
@@ -405,7 +412,7 @@ class Orchestrator:
                         return False
                     prompt = f"{prompt}\n\nPrevious attempt returned empty output. Please provide implementation."
                     continue
-                if re.search(r"QUALITY\s+GATE\s*:\s*PASS", output, re.IGNORECASE):
+                if _QUALITY_GATE_MARKER.lower() in output.lower():
                     state.status = "complete"
                     run.complete("programmer")
                     return True
@@ -420,7 +427,7 @@ class Orchestrator:
                     return False
                 prompt = (
                     f"{prompt}\n\nThe previous attempt did not pass the quality gate. "
-                    "Please fix any issues and include 'QUALITY GATE: PASS' when the implementation is complete."
+                    f"Please fix any issues and include '{_QUALITY_GATE_MARKER}' when the implementation is complete."
                 )
             except asyncio.TimeoutError:
                 state.status = "timeout"
@@ -450,7 +457,11 @@ class Orchestrator:
                 # inject text outside the <error> delimiter.
                 _exc_excerpt = _exc_excerpt.replace("<", "&lt;").replace(">", "&gt;")
                 prompt = f"{prompt}\n\n<error>\n{_exc_excerpt}\n</error>\nPlease fix the error above and retry."
-        return False
+        # Unreachable: every loop path either returns True (gate passes) or calls
+        # run.halt() and returns False when attempt >= self._max_verify.
+        # The max_verify < 1 guard at the top ensures the loop body always runs at
+        # least once, so normal loop exhaustion cannot reach here.
+        return False  # pragma: no cover
 
     async def _run_test_team(self, run: PipelineRun) -> bool:
         """Run unit, backend, and frontend testers in parallel.

@@ -11,8 +11,6 @@ from __future__ import annotations
 import logging
 import re
 
-logger = logging.getLogger(__name__)
-
 from src.pipeline.briefs import (
     ClarifierBrief,
     ImplementationPlan,
@@ -22,6 +20,8 @@ from src.pipeline.briefs import (
     ReviewVerdict,
     TestResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
